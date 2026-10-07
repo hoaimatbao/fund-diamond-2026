@@ -1,3 +1,5 @@
+import { AI_CONFIG } from '../config/aiConfig';
+
 /**
  * Module xử lý OCR và nhận diện hình ảnh biên lai / hóa đơn bằng Google Gemini AI Vision.
  * (Đã tắt hoàn toàn fallback Tesseract theo yêu cầu để đảm bảo chỉ chạy qua Gemini).
@@ -5,15 +7,17 @@
 
 /**
  * Lấy Gemini API Key từ:
- * 1. LocalStorage (người dùng nhập trực tiếp tại giao diện)
+ * 1. AI_CONFIG (file cấu hình mặc định)
  * 2. import.meta.env.VITE_GEMINI_API_KEY
  * 3. import.meta.env.GEMINI_API_KEY
+ * 4. LocalStorage
  */
 export function getGeminiApiKey() {
-  const localKey = typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '';
+  const configKey = (AI_CONFIG?.GEMINI_API_KEY || '').trim();
   const viteKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
   const directKey = (import.meta.env.GEMINI_API_KEY || '').trim();
-  return (localKey || viteKey || directKey).trim();
+  const localKey = typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '').trim() : '';
+  return configKey || viteKey || directKey || localKey || '';
 }
 
 /**
