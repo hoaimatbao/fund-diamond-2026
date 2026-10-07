@@ -128,7 +128,7 @@ export function fileToBase64(file) {
 }
 
 // Lưu model hoạt động nhanh nhất đã xác thực thành công để không bao giờ phải thử lại
-let cachedWorkingModel = 'gemini-flash-latest';
+let cachedWorkingModel = 'gemini-2.5-flash';
 
 /**
  * Gọi trực tiếp REST API của Google Gemini Flash tốc độ cao
@@ -191,13 +191,23 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 }
 `;
 
-  // Cấu hình danh sách endpoint theo thứ tự ưu tiên tốc độ cao nhất
+  // Cấu hình danh sách endpoint theo chuẩn gemini-2.5-flash
   const candidateEndpoints = [
-    { name: cachedWorkingModel || 'gemini-flash-latest', displayName: 'Gemini 2.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/${cachedWorkingModel || 'gemini-flash-latest'}:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-flash-latest', displayName: 'Gemini 2.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` }
+    { 
+      name: 'gemini-2.5-flash', 
+      displayName: 'Gemini 2.5 Flash', 
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
+    },
+    { 
+      name: 'gemini-flash-latest', 
+      displayName: 'Gemini 2.5 Flash', 
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
+    },
+    { 
+      name: 'gemini-1.5-flash', 
+      displayName: 'Gemini 1.5 Flash', 
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
+    }
   ];
 
   // Lọc trùng lặp model
@@ -229,11 +239,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
             }
           ],
           generationConfig: {
-            response_mime_type: 'application/json',
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-            max_output_tokens: 500,
-            maxOutputTokens: 500
+            temperature: 0.2
           }
         })
       });
