@@ -14,10 +14,8 @@ import { AI_CONFIG } from '../config/aiConfig';
  */
 export function getGeminiApiKey() {
   const configKey = (AI_CONFIG?.GEMINI_API_KEY || '').trim();
-  const viteKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
-  const directKey = (import.meta.env.GEMINI_API_KEY || '').trim();
   const localKey = typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '').trim() : '';
-  return configKey || viteKey || directKey || localKey || '';
+  return configKey || localKey || '';
 }
 
 /**
@@ -54,16 +52,15 @@ export function fileToBase64(file) {
  */
 export async function scanWithClientGemini(file, apiKey, onProgress) {
   if (!apiKey || !apiKey.trim()) {
-    throw new Error('Chưa có Gemini API Key! Vui lòng bấm nút "Nhập Key AI" ở phía trên để dán mã API Key (AIzaSy...)');
+    throw new Error('Chưa có Gemini API Key! Vui lòng bấm nút "Nhập Key AI" ở phía trên để dán mã API Key');
   }
 
   const cleanApiKey = apiKey.trim();
-  // Danh sách model chuẩn: ưu tiên gemini-1.5-flash, gemini-1.5-pro và model đề xuất bởi Google
+  // Danh sách model chuẩn: sử dụng gemini-1.5-flash và fallback gemini-1.5-pro
   const candidateEndpoints = [
     { name: 'gemini-1.5-flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
     { name: 'gemini-1.5-flash (v1)', url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-1.5-pro', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-3.8-flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` }
+    { name: 'gemini-1.5-pro', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${encodeURIComponent(cleanApiKey)}` }
   ];
   const base64Data = await fileToBase64(file);
   const mimeType = file.type || 'image/jpeg';

@@ -362,7 +362,67 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   </div>
                 </div>
 
-                {/* 2. Số tiền & Preview */}
+                {/* 2. Người thực hiện / Thành viên nhập quỹ (Ngay trên ô Số tiền) */}
+                <div className="space-y-1.5 pt-1 pb-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Người thực hiện / Thành viên nhập quỹ:
+                    </label>
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border transition ${
+                      formData.submittedBy !== 'Thủ quỹ'
+                        ? 'text-emerald-700 bg-emerald-50 border-emerald-300 shadow-2xs'
+                        : 'text-slate-600 bg-slate-100 border-slate-200'
+                    }`}>
+                      {formData.submittedBy !== 'Thủ quỹ' ? `👤 Đã chọn: ${formData.submittedBy}` : '🏛️ Mặc định: Thủ quỹ'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {/* Nút Mặc định: Thủ quỹ */}
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, submittedBy: 'Thủ quỹ' }))}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-150 cursor-pointer shadow-2xs ${
+                        formData.submittedBy === 'Thủ quỹ'
+                          ? 'bg-slate-800 text-white shadow-md shadow-slate-800/25 ring-2 ring-slate-700/30 font-extrabold'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200/90 hover:text-slate-900 border border-slate-200'
+                      }`}
+                      title="Quỹ chung do Thủ quỹ trực tiếp chi/thu"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>Mặc định: Thủ quỹ</span>
+                    </button>
+
+                    {FUND_MEMBERS.map((member) => {
+                      const isSelected = formData.submittedBy === member;
+                      return (
+                        <button
+                          key={member}
+                          type="button"
+                          onClick={() => handleToggleMember(member)}
+                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150 cursor-pointer shadow-2xs ${
+                            isSelected
+                              ? 'bg-emerald-700 text-white shadow-md shadow-emerald-700/30 ring-2 ring-emerald-600/30 scale-102 font-extrabold'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200/90 hover:text-slate-900 border border-slate-200'
+                          }`}
+                          title={isSelected ? `Bấm lại để hủy chọn và quay về 'Thủ quỹ'` : `Chọn ${member}`}
+                        >
+                          {isSelected ? (
+                            <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          )}
+                          <span>{member}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    💡 AI tự động nhận diện tên thành viên từ nội dung ck hoặc bấm chọn nhanh để ghi nhận hoàn tiền.
+                  </p>
+                </div>
+
+                {/* 3. Số tiền & Preview */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -392,7 +452,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   </p>
                 </div>
 
-                {/* 3. Lý do / Nội dung */}
+                {/* 4. Lý do / Nội dung */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Nội dung / Lý do * :
@@ -407,7 +467,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   />
                 </div>
 
-                {/* 4. Ngày & Danh mục */}
+                {/* 5. Ngày & Danh mục */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -442,51 +502,6 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                       <option value="Khác">Khác</option>
                     </select>
                   </div>
-                </div>
-
-                {/* 5. Người thực hiện / Thành viên nhập quỹ */}
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Người thực hiện / Thành viên nhập quỹ:
-                    </label>
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border transition ${
-                      formData.submittedBy !== 'Thủ quỹ'
-                        ? 'text-emerald-700 bg-emerald-50 border-emerald-300 shadow-2xs'
-                        : 'text-slate-600 bg-slate-100 border-slate-200'
-                    }`}>
-                      {formData.submittedBy !== 'Thủ quỹ' ? `👤 Đã chọn: ${formData.submittedBy}` : '🏛️ Mặc định: Thủ quỹ'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2 pt-0.5">
-                    {FUND_MEMBERS.map((member) => {
-                      const isSelected = formData.submittedBy === member;
-                      return (
-                        <button
-                          key={member}
-                          type="button"
-                          onClick={() => handleToggleMember(member)}
-                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150 cursor-pointer shadow-2xs ${
-                            isSelected
-                              ? 'bg-emerald-700 text-white shadow-md shadow-emerald-700/30 ring-2 ring-emerald-600/30 scale-102 font-extrabold'
-                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200/90 hover:text-slate-900 border border-slate-200'
-                          }`}
-                          title={isSelected ? `Bấm lại để hủy chọn và quay về 'Thủ quỹ'` : `Chọn ${member}`}
-                        >
-                          {isSelected ? (
-                            <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
-                          ) : (
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                          )}
-                          <span>{member}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    💡 Tự động nhận diện tên thành viên từ biên lai/nội dung ck. Bấm chọn để đổi hoặc hủy về "Thủ quỹ".
-                  </p>
                 </div>
 
                 {/* 6. Ghi chú */}
