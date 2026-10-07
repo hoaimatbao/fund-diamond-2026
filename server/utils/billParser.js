@@ -184,7 +184,7 @@ export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', cust
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env');
   }
 
-  const models = ['gemini-2.5-flash'];
+  const models = ['gemini-3.8-flash'];
 
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');
@@ -241,7 +241,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
         model: modelName,
         generationConfig: {
           responseMimeType: 'application/json',
-          temperature: 0.1
+          temperature: 0.2
         }
       });
       const result = await model.generateContent([

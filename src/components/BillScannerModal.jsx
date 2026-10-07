@@ -70,7 +70,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     note: '',
     billImage: '',
     confidence: '99%',
-    source: 'Gemini 2.5 Flash'
+    source: 'Gemini 3.8 Flash'
   });
 
   const [hasScanned, setHasScanned] = useState(false);
@@ -100,7 +100,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
 
   const performScan = async (fileObj, url) => {
     setScanning(true);
-    setScanStatusText('Đang gửi ảnh sang Gemini 2.5 Flash bóc tách thông tin...');
+    setScanStatusText('Đang gửi ảnh sang Gemini 3.8 Flash bóc tách thông tin...');
     setError('');
 
     try {
@@ -145,7 +145,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
         billImage: result.billImage || url,
         compressedBlob: result.compressedBlob || null,
         confidence: result.confidence || '99%',
-        source: result.source || 'Gemini 2.5 Flash'
+        source: result.source || 'Gemini 3.8 Flash'
       });
       setHasScanned(true);
     } catch (err) {
@@ -285,7 +285,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                 Chụp ảnh hoặc tải lên ảnh biên lai / hóa đơn
               </h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
-                Hệ thống tự động sử dụng AI Gemini 2.5 Flash để nhận diện biên lai chuyển khoản ngân hàng, hóa đơn ăn uống, bóc tách chính xác số tiền và nội dung.
+                Hệ thống tự động sử dụng AI Gemini 3.8 Flash để nhận diện biên lai chuyển khoản ngân hàng, hóa đơn ăn uống, bóc tách chính xác số tiền và nội dung.
               </p>
 
               {/* 2 nút tải ảnh riêng biệt: Chụp ảnh bill & Chọn ảnh từ thư viện */}

@@ -188,10 +188,10 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 }
 `;
 
-  // 2. URL Endpoint chuẩn Gemini 2.5 Flash
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
+  // 2. URL Endpoint chuẩn Gemini 3.8 Flash
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
 
-  if (onProgress) onProgress('Đang gửi ảnh sang Gemini 2.5 Flash bóc tách...');
+  if (onProgress) onProgress('Đang gửi ảnh sang Gemini 3.8 Flash bóc tách...');
 
   // 3. Body Request tinh gọn tối đa theo chuẩn Google API v1beta
   const response = await fetch(apiUrl, {
@@ -213,7 +213,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
       ],
       generationConfig: {
         response_mime_type: 'application/json',
-        temperature: 0.1
+        temperature: 0.2
       }
     })
   });
@@ -222,8 +222,8 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
     const errorJson = await response.json().catch(() => ({}));
     const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
     const googleStatus = errorJson.error?.status || '';
-    const fullError = `Google API (gemini-2.5-flash) [${googleStatus || response.status}]: ${googleMessage}`;
-    console.warn('Gemini 2.5 Flash API error:', fullError);
+    const fullError = `Google API (gemini-3.8-flash) [${googleStatus || response.status}]: ${googleMessage}`;
+    console.warn('Gemini 3.8 Flash API error:', fullError);
     throw new Error(fullError);
   }
 
@@ -264,7 +264,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
     payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
     note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
     confidence: '99%',
-    source: 'Gemini 2.5 Flash',
+    source: 'Gemini 3.8 Flash',
     compressedBlob
   };
 }
