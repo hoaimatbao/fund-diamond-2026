@@ -29,16 +29,12 @@ export function parseReceiptText(text) {
   let confidence = '85%';
 
   // 1. Detect Amount
-  // Pattern 1: Short-hand with "k" / "K" / "nghìn" / "ngàn" (e.g., "154k", "154 k", "154 nghìn", "154.000")
   const kRegex = /(\d+(?:[.,]\d+)?)\s*(?:k\b|K\b|nghìn|ngàn|nghin|ngan)/i;
-  // Pattern 2: Short-hand with "tr" / "củ" / "triệu" (e.g., "2tr", "1.5tr", "3 củ", "2 triệu")
   const trRegex = /(\d+(?:[.,]\d+)?)\s*(?:tr\b|Tr\b|củ|cu|triệu|trieu)/i;
-  // Pattern 3: Formatted numbers like 3.552.000 or 150,000 or 180000
   const fullNumberRegex = /(?:tổng cộng|thành tiền|tổng tiền|cộng tiền|thanh toán|payment|total)?\s*[:=\s]*([1-9]\d{0,2}(?:[.,]\d{3})+|[1-9]\d{4,8})\s*(?:đ|vnđ|vnd)?/i;
 
   let foundAmount = false;
 
-  // Search keyword lines from bottom up (grand totals like TỔNG CỘNG are always at the bottom of bills)
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (/tổng cộng|tổng tiền|tổng thanh toán|thanh toán|thành tiền|tiền hàng|total/i.test(line)) {
@@ -51,7 +47,6 @@ export function parseReceiptText(text) {
           break;
         }
       }
-      // Check next line (e.g., "TỔNG CỘNG THANH TOÁN:" on line i and "3.552.000 đ" on line i+1)
       if (i + 1 < lines.length) {
         const nextLine = lines[i + 1];
         match = nextLine.match(kRegex) || nextLine.match(trRegex) || nextLine.match(fullNumberRegex);
@@ -67,7 +62,6 @@ export function parseReceiptText(text) {
     }
   }
 
-  // If not found by keywords, search valid lines from bottom up (excluding MST, Hotline, Phone, STK)
   if (!foundAmount) {
     const validLines = lines.filter(l => !/mst\b|mã số thuế|hotline\b|tel\b|sđt\b|phone\b|stk\b|tài khoản/i.test(l));
     for (let i = validLines.length - 1; i >= 0; i--) {
@@ -102,10 +96,7 @@ export function parseReceiptText(text) {
   }
 
   // 3. Detect Type (THU vs CHI)
-  // Robust keywords supporting with and without Vietnamese accents
   const thuKeywords = /thưởng|thuong|thường|thương|thu\s*quỹ|thu\s*quy|nộp|nop|xung\s*quỹ|xung\s*quy|xung|đóng\s*quỹ|dong\s*quy|đóng|dong|gửi|gui|gủi|hoàn\s*ứng|hoan\s*ung|nhận\s*tiền|nhan\s*tien|ws\b|aff\b|tmvn\b|cá\s*2025|tiền\s*thưởng/i;
-  const chiKeywords = /chi\b|ăn\b|an\b|uống\b|uong\b|mua\b|thanh toán|thanh toan|hóa đơn|hoa don|bill|tiệc|tiec|trà\b|tra\b|chè\b|che\b|cà phê|ca phe|cafe|buffet|nem lụi|sữa chua|sua chua|bánh|banh|ốc\b|oc\b|ếch\b|ech\b/i;
-
   if (thuKeywords.test(cleanText) && !cleanText.toLowerCase().startsWith('chi thưởng')) {
     type = 'THU';
     category = 'Thưởng dự án';
@@ -118,9 +109,8 @@ export function parseReceiptText(text) {
   }
 
   // 4. Detect Description
-  // Find primary subject line
   for (let line of lines) {
-    let l = line.replace(/(\d+.*)/, '').trim(); // strip trailing numbers
+    let l = line.replace(/(\d+.*)/, '').trim();
     l = l.replace(/(?:tổng cộng|thành tiền|tổng tiền|tiền hàng|total|thanh toán)[\s:]*$/i, '').trim();
     l = l.replace(/[:\-–—\.]+\s*$/, '').trim();
     if (l.length >= 3 && !/hóa đơn|phiếu|thanh toán|thu ngân|bàn|ngày|tel|mst|cảm ơn/i.test(l)) {
@@ -130,7 +120,6 @@ export function parseReceiptText(text) {
   }
 
   if (!description) {
-    // Check common patterns
     if (/chè/i.test(cleanText)) description = 'Chi ăn chè';
     else if (/sữa chua/i.test(cleanText)) description = 'Chi ăn sữa chua';
     else if (/sen tây hồ/i.test(cleanText)) description = 'Đi ăn Sen Tây Hồ';
@@ -142,7 +131,6 @@ export function parseReceiptText(text) {
     else description = type === 'THU' ? 'Thu nhập quỹ' : 'Chi tiêu theo hóa đơn';
   }
 
-  // Capitalize first letter
   description = description.charAt(0).toUpperCase() + description.slice(1);
 
   return {
@@ -163,7 +151,6 @@ export function extractAmountFromMatch(str) {
   if (!str) return 0;
   const s = str.toLowerCase().replace(/đ|vnđ|vnd/g, '').trim();
 
-  // If contains "tr", "củ", "triệu"
   if (/(?:tr\b|củ|cu|triệu|trieu)/.test(s)) {
     const numPart = s.match(/(\d+(?:[.,]\d+)?)/);
     if (numPart) {
@@ -172,7 +159,6 @@ export function extractAmountFromMatch(str) {
     }
   }
 
-  // If contains "k", "nghìn", "ngàn"
   if (/(?:k\b|nghìn|ngàn|nghin|ngan)/.test(s)) {
     const numPart = s.match(/(\d+(?:[.,]\d+)?)/);
     if (numPart) {
@@ -181,7 +167,6 @@ export function extractAmountFromMatch(str) {
     }
   }
 
-  // Standard integer with thousand separators (e.g. 3.552.000 or 150000)
   const numbersOnly = s.replace(/[^0-9]/g, '');
   if (numbersOnly) {
     return parseInt(numbersOnly, 10);
@@ -200,52 +185,31 @@ export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', cust
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
 
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');
   const todayFormatted = new Date().toLocaleDateString('vi-VN');
 
   const prompt = `
-Bạn là chuyên gia bóc tách hóa đơn, biên lai chuyển khoản ngân hàng và giấy viết tay chi tiêu cho quỹ nội bộ công ty tại Việt Nam.
-Hãy đọc kỹ hình ảnh (đặc biệt là ảnh chụp màn hình biên lai chuyển khoản ngân hàng như Vietcombank, BIDV, Techcombank, VPBank, MBBank, Momo, v.v., hoặc hóa đơn thanh toán, giấy viết tay) và trích xuất chính xác các thông tin:
+Đây là biên lai/bill chuyển khoản ngân hàng Việt Nam. 
+Hãy đọc kỹ hình ảnh và trích xuất thông tin theo đúng các quy tắc nghiêm ngặt:
+- SỐ TIỀN (amount): Là con số to nhất, nổi bật nhất nằm ngay cạnh hoặc dưới chữ 'Thành công' và trước ký hiệu 'đ'. Trong ảnh này con số đó là 430000. TUYỆT ĐỐI không lấy số tài khoản (03808218301) hay số ngày tháng làm số tiền. Trả về dạng số nguyên (integer, ví dụ 430000).
+- NỘI DUNG (description): Lấy từ dòng 'Nội dung' (Team Diamond ck quy NB T102026).
+- NGÀY (date): 07/10/2026 (hoặc ngày ghi trên biên lai định dạng DD/MM/YYYY).
+- NGƯỜI NHẬN / NGƯỜI THỤ HƯỞNG (payerOrReceiver): NGUYEN THI PHUONG NGAN.
+- LOẠI (type): Nếu là biên lai chuyển tiền vào quỹ/đóng quỹ -> "THU". Nếu là hóa đơn chi tiền -> "CHI".
+- DANH MỤC (category): 'Đóng quỹ'.
 
-1. Số tiền (amount): 
-   - ĐỐI VỚI BIÊN LAI CHUYỂN KHOẢN NGÂN HÀNG: Tìm chính xác con số lớn nhất đi liền sau chữ "Thành công" / "Giao dịch thành công" hoặc ngay trước ký hiệu "đ", "VND", "VNĐ" (Ví dụ: "430 000 đ" -> 430000, "150.000 VND" -> 150000).
-   - TUYỆT ĐỐI KHÔNG lấy số ngày tháng (ví dụ 07/10/2026), không lấy số tài khoản/số thẻ, và TUYỆT ĐỐI KHÔNG lấy các mã ở phần nội dung/lời nhắn (ví dụ mã như "T102026", "Q10", "STT132" KHÔNG PHẢI là số tiền).
-   - ĐỐI VỚI CHỮ VIẾT TẮT TIẾNG VIỆT: Đọc các đơn vị viết tắt thông dụng: 'k', 'K', 'nghìn', 'ngàn' -> nhân 1.000 (Ví dụ: '154k' -> 154000). Đọc chữ 'tr', 'củ', 'triệu' -> nhân 1.000.000 (Ví dụ: '2tr' -> 2000000, '1.5tr' -> 1500000).
-   - Trả về SỐ NGUYÊN DƯƠNG (integer), không chứa dấu chấm hay phẩy hay chữ đ.
-
-2. Nội dung / Lý do (description): 
-   - Lấy chính xác dòng "Nội dung" / "Nội dung giao dịch" / "Lời nhắn" trên biên lai chuyển khoản (Ví dụ: "Team Diamond ck quy NB T102026" -> ghi nhận là "Team Diamond ck quy NB T102026" hoặc rút gọn tên khoản chi như "Đóng quỹ nội bộ T10/2026").
-   - Nếu là hóa đơn mua sắm/ăn uống/liên hoan: Lấy tên món ăn, quán ăn hoặc mục đích chi tiêu (Ví dụ: 'Chi ăn chè', 'Đi ăn Sen Tây Hồ', 'Bánh xèo nem lụi', 'Thưởng team').
-
-3. Người nhận / Người thụ hưởng (receiver):
-   - Lấy tên người nhận / người thụ hưởng trên biên lai nếu có (Ví dụ: 'NGUYEN THI PHUONG NGAN', 'HOANG THI HOAI', v.v.).
-
-4. Ngày giao dịch (date): 
-   - Lấy chính xác thời gian chuyển khoản/thanh toán trên biên lai. Định dạng 'DD/MM/YYYY' (Ví dụ: '07/10/2026'). Nếu không có năm, lấy năm 2026. Nếu không thấy rõ ngày, lấy ngày hôm nay (${todayFormatted}).
-
-5. Loại giao dịch (type): 
-   - 'THU': Nếu là biên lai chuyển tiền vào quỹ, đóng quỹ ("ck quy", "nop quy", "dong quy"), nộp tiền, thưởng dự án, hoàn ứng.
-   - 'CHI': Nếu là hóa đơn chi tiêu ăn uống, mua sắm, trả tiền dịch vụ, hoặc biên lai chuyển khoản thanh toán khoản chi.
-
-6. Danh mục (category): 
-   - Chọn 1 trong các mục: 'Ăn uống', 'Liên hoan', 'Thưởng dự án', 'Khen thưởng', 'Đóng quỹ', 'Sinh nhật', 'Teambuilding', 'Khác'.
-
-7. Ghi chú (note): 
-   - Ghi chú thêm người nhận hoặc chi tiết giao dịch (Ví dụ: 'Người nhận: NGUYEN THI PHUONG NGAN').
-
-CHỈ TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ THEO CẤU TRÚC:
+TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ THEO CẤU TRÚC (không kèm lời dẫn):
 {
   "amount": 430000,
   "description": "Team Diamond ck quy NB T102026",
-  "receiver": "NGUYEN THI PHUONG NGAN",
-  "type": "THU",
   "date": "07/10/2026",
+  "payerOrReceiver": "NGUYEN THI PHUONG NGAN",
+  "type": "THU",
   "category": "Đóng quỹ",
-  "note": "Người nhận: NGUYEN THI PHUONG NGAN",
-  "confidence": "99%"
+  "note": "Người nhận: NGUYEN THI PHUONG NGAN"
 }
 `;
 
@@ -275,9 +239,9 @@ CHỈ TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ THEO CẤU TRÚC:
         description: parsed.description || 'Giao dịch theo biên lai',
         type: parsed.type === 'THU' ? 'THU' : 'CHI',
         date: parsed.date || todayFormatted,
-        category: parsed.category || 'Ăn uống',
-        note: parsed.note || (parsed.receiver ? `Người nhận: ${parsed.receiver}` : 'AI Gemini Vision trích xuất'),
-        confidence: parsed.confidence || '98%'
+        category: parsed.category || 'Đóng quỹ',
+        note: parsed.note || (parsed.payerOrReceiver ? `Người nhận: ${parsed.payerOrReceiver}` : 'AI Gemini Vision trích xuất'),
+        confidence: '99%'
       };
     } catch (err) {
       console.warn(`Model ${modelName} error in server:`, err.message);

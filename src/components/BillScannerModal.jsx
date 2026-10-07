@@ -15,7 +15,8 @@ import {
   RefreshCw,
   Zap,
   Key,
-  ExternalLink
+  ExternalLink,
+  AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { scanBillImage, getGeminiApiKey, saveGeminiApiKey } from '../utils/ocrScanner';
@@ -96,16 +97,20 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
         description: result.description || 'Giao dịch theo biên lai',
         type: result.type || 'CHI',
         date: result.date || new Date().toLocaleDateString('vi-VN'),
-        category: result.category || 'Ăn uống',
-        note: result.note || '',
+        category: result.category || 'Đóng quỹ',
+        note: result.note || (result.payerOrReceiver ? `Người nhận: ${result.payerOrReceiver}` : ''),
         billImage: result.billImage || url,
-        confidence: result.confidence || '98%',
-        source: result.source || 'Gemini AI Vision'
+        confidence: result.confidence || '99%',
+        source: result.source || 'Gemini 1.5 Flash'
       });
       setHasScanned(true);
     } catch (err) {
-      console.error('Scan error:', err);
-      setError('Không thể nhận diện tự động. Bạn vẫn có thể điền thông tin vào các ô bên dưới.');
+      console.error('Scan error from Gemini:', err);
+      const detailedMessage = err.message || 'Lỗi không xác định khi gọi Google Gemini API';
+      setError(detailedMessage);
+      if (/API_KEY|key|chưa có|unauthenticated|400|403|permission/i.test(detailedMessage)) {
+        setShowKeyInput(true);
+      }
       setFormData(prev => ({
         ...prev,
         billImage: url
@@ -495,9 +500,34 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                 </div>
 
                 {error && (
-                  <p className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
-                    {error}
-                  </p>
+                  <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-xl text-xs space-y-2 animate-in fade-in">
+                    <div className="flex items-start gap-2.5 text-rose-900">
+                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <strong className="block font-bold text-rose-900 text-sm">
+                          Thông báo lỗi từ Google Gemini:
+                        </strong>
+                        <p className="font-mono text-[11px] text-rose-700 bg-white/90 p-2.5 rounded-lg border border-rose-200 mt-1 break-words leading-relaxed select-all">
+                          {error}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1 border-t border-rose-200/70">
+                      <span className="text-[11px] text-rose-700 font-medium">
+                        💡 Hãy kiểm tra lại API Key ở thanh trên hoặc kiểm tra mạng/quota tài khoản Google AI.
+                      </span>
+                      {file && (
+                        <button
+                          type="button"
+                          onClick={() => performScan(file, previewUrl)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-xs shrink-0"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Thử quét lại</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {/* Submit Actions */}
