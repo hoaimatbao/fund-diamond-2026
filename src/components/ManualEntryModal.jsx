@@ -335,7 +335,7 @@ export default function ManualEntryModal({ isOpen, onClose, onSave, editingTrans
               type="submit"
               className="flex-1 py-2.5 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/30"
             >
-              {editingTransaction ? 'Lưu Thay Đổi' : 'Thêm Vào Quỹ'}
+              {editingTransaction ? 'Lưu Thay Đổi' : 'Xác Nhận & Lưu Vào Quỹ'}
             </button>
           </div>
 

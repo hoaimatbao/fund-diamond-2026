@@ -8,10 +8,10 @@
     "excelSource": "quỹ team DM.xlsx",
     "summary": {
       "totalIncome": 53104581,
-      "totalExpense": 41992450,
-      "currentBalance": 11112131
+      "totalExpense": 42422450,
+      "currentBalance": 10682131
     },
-    "lastUpdated": "2026-10-07T02:58:24.806Z",
+    "lastUpdated": "2026-10-07T04:37:24.800Z",
     "memberCount": 6,
     "members": [
       "Thanh",
@@ -882,6 +882,19 @@
       "recordedBy": "Thủ quỹ",
       "note": "",
       "runningBalance": 11112131
+    },
+    {
+      "id": 134,
+      "date": "07/10/2026",
+      "description": "Team Diamond ck quy NB T102026",
+      "type": "CHI",
+      "amount": 430000,
+      "category": "Đóng quỹ",
+      "billImage": "/uploads/bill-1791347844740-363259945.jpg",
+      "submittedBy": "Thủ quỹ",
+      "recordedBy": "Thủ quỹ",
+      "reimbursementStatus": "REIMBURSED",
+      "note": ""
     }
   ]
 }

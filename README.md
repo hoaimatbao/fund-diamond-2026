@@ -37,9 +37,24 @@ npm start
 - **Giao diện (Frontend):** React (Vite), Tailwind CSS, Lucide Icons.
 - **Máy chủ & API (Backend):** Node.js (Express), Multer (xử lý upload ảnh bill).
 - **Cơ sở dữ liệu cục bộ:** `server/data/fund_diamond_2026.json` (toàn bộ dữ liệu nằm trọn 1 repo, backup cực dễ dàng).
+- **Đồng bộ đám mây:** Tự động gửi song song dữ liệu đến Google Sheets Webhook khi xác nhận lưu giao dịch.
+
+---
+
+## ☁️ Đồng Bộ Tự Động Google Sheets Webhook
+- **URL Webhook:** `https://script.google.com/macros/s/AKfycbyYkEtOutAZQixh2FEqMKcFlB8PlAhfmsSVkNsIL2PQgKLBg8jBNJqtm5kvHMd2QkVMwg/exec`
+- Mỗi khi người dùng bấm **"Xác nhận & Lưu Vào Quỹ"** (cả nhập thủ công và quét bill AI), hệ thống tự động bắn một request POST (JSON) song song với `mode: 'no-cors'`.
+- Dữ liệu đồng bộ:
+  - `type`: `'income'` (khoản thu) hoặc `'expense'` (khoản chi)
+  - `amount`: số tiền giao dịch (số nguyên)
+  - `date`: ngày giao dịch (chuỗi ngày/tháng/năm)
+  - `member`: thành viên được chọn (Thủ quỹ, Thanh, Hằng, Tuyển, Phương, Hà...)
+  - `description`: nội dung / lý do giao dịch
+- Tự động bọc trong `try/catch` độc lập, mạng chập chờn vẫn lưu web thông suốt.
 
 ---
 
 ## 🔐 Phân Quyền
 - **Chế độ Thành viên:** Xem công khai 3 thẻ số dư, bảng danh sách Thu - Chi, xem hóa đơn/bill đối soát, lọc tìm kiếm, xuất file Excel CSV.
 - **Chế độ Thủ Quỹ:** Đăng nhập bằng mã PIN mặc định `123456` để kích hoạt quyền thêm, sửa, xóa khoản chi tiêu hoặc quét bill AI.
+
