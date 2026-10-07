@@ -182,13 +182,15 @@ router.post('/scan-bill', upload.single('bill'), async (req, res) => {
   const fileUrl = `/uploads/${req.file.filename}`;
   const mimeType = req.file.mimetype || 'image/jpeg';
 
-  const hasApiKey = Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+  const clientApiKey = req.headers['x-gemini-key'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+  const effectiveApiKey = clientApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const hasApiKey = Boolean(effectiveApiKey);
 
   const isSvg = req.file.filename.endsWith('.svg') || mimeType.includes('svg');
 
   if (hasApiKey && !isSvg) {
     try {
-      const extracted = await scanBillWithGemini(filePath, mimeType);
+      const extracted = await scanBillWithGemini(filePath, mimeType, effectiveApiKey);
       return res.json({
         success: true,
         method: 'gemini',

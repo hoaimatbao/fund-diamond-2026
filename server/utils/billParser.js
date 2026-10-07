@@ -193,71 +193,97 @@ export function extractAmountFromMatch(str) {
 /**
  * Scan image with Gemini Vision API
  */
-export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg') {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', customApiKey = null) {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env');
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  // Using gemini-2.5-flash or gemini-1.5-flash
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
 
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');
+  const todayFormatted = new Date().toLocaleDateString('vi-VN');
 
   const prompt = `
-Bạn là chuyên gia bóc tách hóa đơn, biên lai chuyển khoản và giấy viết tay chi tiêu cho quỹ nội bộ công ty tại Việt Nam.
-Hãy đọc kỹ hình ảnh (bao gồm cả chữ in hóa đơn, biên lai ngân hàng, ảnh chụp màn hình điện thoại hoặc chữ viết tay trên giấy) và trích xuất các thông tin sau:
+Bạn là chuyên gia bóc tách hóa đơn, biên lai chuyển khoản ngân hàng và giấy viết tay chi tiêu cho quỹ nội bộ công ty tại Việt Nam.
+Hãy đọc kỹ hình ảnh (đặc biệt là ảnh chụp màn hình biên lai chuyển khoản ngân hàng như Vietcombank, BIDV, Techcombank, VPBank, MBBank, Momo, v.v., hoặc hóa đơn thanh toán, giấy viết tay) và trích xuất chính xác các thông tin:
+
 1. Số tiền (amount): 
-   - Đọc các đơn vị viết tắt tiếng Việt thông dụng: 'k', 'K', 'nghìn', 'ngàn' -> nhân 1.000 (Ví dụ: '154k' -> 154000).
-   - Đọc chữ 'tr', 'củ', 'triệu' -> nhân 1.000.000 (Ví dụ: '2tr' -> 2000000, '1.5tr' -> 1500000).
-   - Đọc số tiền tổng thanh toán/tổng tiền cuối cùng. Trả về số nguyên dương.
-2. Nội dung / Lý do (description): Tên khoản chi hoặc thu được ghi trong ảnh (Ví dụ: 'Chi ăn chè', 'Đi ăn Sen Tây Hồ', 'Bánh xèo nem lụi', 'Thưởng team').
-3. Loại giao dịch (type): 'CHI' hoặc 'THU'.
-   - Nếu là hóa đơn mua sắm, ăn uống, chi tiền, cà phê, trà sữa, tiền cơm -> 'CHI'.
-   - Nếu là biên lai chuyển tiền vào, thưởng dự án, đóng quỹ, hoàn ứng -> 'THU'.
-4. Ngày giao dịch (date): Định dạng 'DD/MM/YYYY'. Nếu không có năm, lấy năm 2026. Nếu không thấy rõ ngày, lấy ngày hôm nay.
-5. Danh mục (category): Chọn 1 trong các mục: 'Ăn uống', 'Liên hoan', 'Thưởng dự án', 'Khen thưởng', 'Đóng quỹ', 'Sinh nhật', 'Teambuilding', 'Khác'.
-6. Ghi chú (note): Chi tiết món ăn, địa điểm hoặc thông tin thêm từ ảnh.
+   - ĐỐI VỚI BIÊN LAI CHUYỂN KHOẢN NGÂN HÀNG: Tìm chính xác con số lớn nhất đi liền sau chữ "Thành công" / "Giao dịch thành công" hoặc ngay trước ký hiệu "đ", "VND", "VNĐ" (Ví dụ: "430 000 đ" -> 430000, "150.000 VND" -> 150000).
+   - TUYỆT ĐỐI KHÔNG lấy số ngày tháng (ví dụ 07/10/2026), không lấy số tài khoản/số thẻ, và TUYỆT ĐỐI KHÔNG lấy các mã ở phần nội dung/lời nhắn (ví dụ mã như "T102026", "Q10", "STT132" KHÔNG PHẢI là số tiền).
+   - ĐỐI VỚI CHỮ VIẾT TẮT TIẾNG VIỆT: Đọc các đơn vị viết tắt thông dụng: 'k', 'K', 'nghìn', 'ngàn' -> nhân 1.000 (Ví dụ: '154k' -> 154000). Đọc chữ 'tr', 'củ', 'triệu' -> nhân 1.000.000 (Ví dụ: '2tr' -> 2000000, '1.5tr' -> 1500000).
+   - Trả về SỐ NGUYÊN DƯƠNG (integer), không chứa dấu chấm hay phẩy hay chữ đ.
+
+2. Nội dung / Lý do (description): 
+   - Lấy chính xác dòng "Nội dung" / "Nội dung giao dịch" / "Lời nhắn" trên biên lai chuyển khoản (Ví dụ: "Team Diamond ck quy NB T102026" -> ghi nhận là "Team Diamond ck quy NB T102026" hoặc rút gọn tên khoản chi như "Đóng quỹ nội bộ T10/2026").
+   - Nếu là hóa đơn mua sắm/ăn uống/liên hoan: Lấy tên món ăn, quán ăn hoặc mục đích chi tiêu (Ví dụ: 'Chi ăn chè', 'Đi ăn Sen Tây Hồ', 'Bánh xèo nem lụi', 'Thưởng team').
+
+3. Người nhận / Người thụ hưởng (receiver):
+   - Lấy tên người nhận / người thụ hưởng trên biên lai nếu có (Ví dụ: 'NGUYEN THI PHUONG NGAN', 'HOANG THI HOAI', v.v.).
+
+4. Ngày giao dịch (date): 
+   - Lấy chính xác thời gian chuyển khoản/thanh toán trên biên lai. Định dạng 'DD/MM/YYYY' (Ví dụ: '07/10/2026'). Nếu không có năm, lấy năm 2026. Nếu không thấy rõ ngày, lấy ngày hôm nay (${todayFormatted}).
+
+5. Loại giao dịch (type): 
+   - 'THU': Nếu là biên lai chuyển tiền vào quỹ, đóng quỹ ("ck quy", "nop quy", "dong quy"), nộp tiền, thưởng dự án, hoàn ứng.
+   - 'CHI': Nếu là hóa đơn chi tiêu ăn uống, mua sắm, trả tiền dịch vụ, hoặc biên lai chuyển khoản thanh toán khoản chi.
+
+6. Danh mục (category): 
+   - Chọn 1 trong các mục: 'Ăn uống', 'Liên hoan', 'Thưởng dự án', 'Khen thưởng', 'Đóng quỹ', 'Sinh nhật', 'Teambuilding', 'Khác'.
+
+7. Ghi chú (note): 
+   - Ghi chú thêm người nhận hoặc chi tiết giao dịch (Ví dụ: 'Người nhận: NGUYEN THI PHUONG NGAN').
 
 CHỈ TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ THEO CẤU TRÚC:
 {
-  "amount": 154000,
-  "description": "Chi ăn chè",
-  "type": "CHI",
-  "date": "06/10/2026",
-  "category": "Ăn uống",
-  "note": "Chữ viết tay trên giấy",
-  "confidence": "98%"
+  "amount": 430000,
+  "description": "Team Diamond ck quy NB T102026",
+  "receiver": "NGUYEN THI PHUONG NGAN",
+  "type": "THU",
+  "date": "07/10/2026",
+  "category": "Đóng quỹ",
+  "note": "Người nhận: NGUYEN THI PHUONG NGAN",
+  "confidence": "99%"
 }
 `;
 
-  const result = await model.generateContent([
-    prompt,
-    {
-      inlineData: {
-        data: base64Data,
-        mimeType
-      }
-    }
-  ]);
+  let lastErr = null;
+  for (const modelName of models) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent([
+        prompt,
+        {
+          inlineData: {
+            data: base64Data,
+            mimeType
+          }
+        }
+      ]);
 
-  const responseText = result.response.text();
-  // Extract JSON from response
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('Gemini không trả về định dạng JSON hợp lệ');
+      const responseText = result.response.text();
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Gemini không trả về định dạng JSON hợp lệ');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        amount: Number(parsed.amount) || 0,
+        description: parsed.description || 'Giao dịch theo biên lai',
+        type: parsed.type === 'THU' ? 'THU' : 'CHI',
+        date: parsed.date || todayFormatted,
+        category: parsed.category || 'Ăn uống',
+        note: parsed.note || (parsed.receiver ? `Người nhận: ${parsed.receiver}` : 'AI Gemini Vision trích xuất'),
+        confidence: parsed.confidence || '98%'
+      };
+    } catch (err) {
+      console.warn(`Model ${modelName} error in server:`, err.message);
+      lastErr = err;
+    }
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
-  return {
-    amount: Number(parsed.amount) || 0,
-    description: parsed.description || 'Chi tiêu theo hóa đơn',
-    type: parsed.type === 'THU' ? 'THU' : 'CHI',
-    date: parsed.date || new Date().toLocaleDateString('vi-VN'),
-    category: parsed.category || 'Ăn uống',
-    note: parsed.note || 'AI Gemini Vision trích xuất',
-    confidence: parsed.confidence || '95%'
-  };
+  throw lastErr || new Error('Không thể kết nối tới mô hình Gemini Vision');
 }
