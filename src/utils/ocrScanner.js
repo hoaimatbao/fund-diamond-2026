@@ -188,85 +188,111 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 }
 `;
 
-  // 2. URL Endpoint chuẩn Gemini 3.8 Flash
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
+  // 2. Danh sách model dự phòng theo thứ tự ưu tiên
+  const MODELS = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash'
+  ];
 
-  if (onProgress) onProgress('Đang gửi ảnh sang Gemini 3.8 Flash bóc tách...');
+  let lastError = null;
 
-  // 3. Body Request tinh gọn tối đa theo chuẩn Google API v1beta
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: 'image/jpeg',
-                data: base64Data
-              }
-            }
-          ]
+  for (let i = 0; i < MODELS.length; i++) {
+    const modelName = MODELS[i];
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
+
+    try {
+      if (onProgress) {
+        if (i === 0) {
+          onProgress(`Đang gửi ảnh sang ${modelName} bóc tách...`);
+        } else {
+          onProgress(`Máy chủ bận, tự động chuyển sang model dự phòng ${modelName}...`);
         }
-      ],
-      generationConfig: {
-        response_mime_type: 'application/json',
-        temperature: 0.2
       }
-    })
-  });
 
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
-    const googleStatus = errorJson.error?.status || '';
-    const fullError = `Google API (gemini-3.8-flash) [${googleStatus || response.status}]: ${googleMessage}`;
-    console.warn('Gemini 3.8 Flash API error:', fullError);
-    throw new Error(fullError);
-  }
+      // 3. Body Request tinh gọn tối đa theo chuẩn Google API v1beta
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inline_data: {
+                    mime_type: 'image/jpeg',
+                    data: base64Data
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            response_mime_type: 'application/json',
+            temperature: 0.2
+          }
+        })
+      });
 
-  const json = await response.json();
-  const textOutput = json.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!textOutput) {
-    const reason = json.candidates?.[0]?.finishReason;
-    throw new Error(`Gemini không trả về nội dung kết quả (Lý do: ${reason || 'Không rõ'})`);
-  }
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
+        const googleStatus = errorJson.error?.status || '';
+        const fullError = `Google API (${modelName}) [${googleStatus || response.status}]: ${googleMessage}`;
+        console.warn(`Model ${modelName} gặp lỗi/quá tải, chuyển model tiếp theo...:`, fullError);
+        throw new Error(fullError);
+      }
 
-  let parsed = {};
-  try {
-    parsed = JSON.parse(textOutput);
-  } catch {
-    const jsonMatch = textOutput.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Gemini trả về văn bản không phải JSON: ' + textOutput.slice(0, 150));
+      const json = await response.json();
+      const textOutput = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!textOutput) {
+        const reason = json.candidates?.[0]?.finishReason;
+        throw new Error(`Gemini (${modelName}) không trả về nội dung kết quả (Lý do: ${reason || 'Không rõ'})`);
+      }
+
+      let parsed = {};
+      try {
+        parsed = JSON.parse(textOutput);
+      } catch {
+        const jsonMatch = textOutput.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error(`Gemini (${modelName}) trả về văn bản không phải JSON: ` + textOutput.slice(0, 150));
+        }
+        parsed = JSON.parse(jsonMatch[0]);
+      }
+
+      let parsedAmount = parsed.amount;
+      if (typeof parsedAmount === 'string') {
+        parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
+      } else {
+        parsedAmount = Math.round(Number(parsedAmount)) || 0;
+      }
+
+      const resolvedType = (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI';
+
+      return {
+        amount: parsedAmount || '',
+        description: parsed.description || 'Giao dịch theo biên lai',
+        type: resolvedType,
+        date: parsed.date || todayFormatted,
+        category: parsed.category || 'Ăn uống',
+        member: parsed.member || '',
+        payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
+        note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
+        confidence: '99%',
+        source: `Gemini (${modelName})`,
+        compressedBlob
+      };
+    } catch (err) {
+      console.warn(`Thử model ${modelName} thất bại:`, err.message);
+      lastError = err;
+      // Tự động chuyển ngay sang model tiếp theo trong danh sách mà không ngắt luồng
     }
-    parsed = JSON.parse(jsonMatch[0]);
   }
 
-  let parsedAmount = parsed.amount;
-  if (typeof parsedAmount === 'string') {
-    parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
-  } else {
-    parsedAmount = Math.round(Number(parsedAmount)) || 0;
-  }
-
-  const resolvedType = (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI';
-
-  return {
-    amount: parsedAmount || '',
-    description: parsed.description || 'Giao dịch theo biên lai',
-    type: resolvedType,
-    date: parsed.date || todayFormatted,
-    category: parsed.category || 'Ăn uống',
-    member: parsed.member || '',
-    payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
-    note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
-    confidence: '99%',
-    source: 'Gemini 3.8 Flash',
-    compressedBlob
-  };
+  // Chỉ hiển thị thông báo lỗi lên giao diện nếu tất cả các model đều thất bại
+  throw lastError || new Error('Tất cả các model Google Gemini đều đang quá tải hoặc không khả dụng. Vui lòng thử lại sau.');
 }
 
 /**
