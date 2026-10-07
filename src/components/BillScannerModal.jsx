@@ -14,10 +14,42 @@ import {
   Tag, 
   RefreshCw,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Check
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { scanBillImage } from '../utils/ocrScanner';
+
+const FUND_MEMBERS = ['Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
+
+/**
+ * Tự động nhận diện tên thành viên từ nội dung biên lai hoặc tên người gửi/nhận
+ */
+function detectMemberFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const normalized = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const memberKeywords = [
+    { name: 'Thanh', patterns: ['tran thi thanh', 'tranthithanh', 'thanh'] },
+    { name: 'Hằng', patterns: ['nguyen thi hang', 'nguyenthihang', 'hang'] },
+    { name: 'Tuyển', patterns: ['nguyen thi hong tuyen', 'nguyenthihongtuyen', 'tuyen'] },
+    { name: 'Phương', patterns: ['dang lan phuong', 'danglanphuong', 'phuong'] },
+    { name: 'Hà', patterns: ['pham thi ha', 'phamthiha', 'ha'] }
+  ];
+
+  for (const m of memberKeywords) {
+    for (const pat of m.patterns) {
+      const regex = new RegExp(`(^|[^a-z0-9])${pat}([^a-z0-9]|$)`, 'i');
+      if (regex.test(normalized)) {
+        return m.name;
+      }
+    }
+  }
+  return null;
+}
 
 export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
   const [file, setFile] = useState(null);
@@ -32,6 +64,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     type: 'CHI',
     date: new Date().toLocaleDateString('vi-VN'),
     category: 'Ăn uống',
+    submittedBy: 'Thủ quỹ',
     note: '',
     billImage: '',
     confidence: '99%',
@@ -42,6 +75,13 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
+
+  const handleToggleMember = (member) => {
+    setFormData(prev => ({
+      ...prev,
+      submittedBy: prev.submittedBy === member ? 'Thủ quỹ' : member
+    }));
+  };
 
   const handleFileChange = async (e) => {
     const selected = e.target.files[0];
@@ -64,12 +104,18 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     try {
       const result = await scanBillImage(fileObj, (msg) => setScanStatusText(msg));
       
+      // Tự động nhận diện thành viên từ kết quả quét AI (nội dung, người nhận, ghi chú)
+      const textToSearch = `${result.payerOrReceiver || ''} ${result.description || ''} ${result.note || ''}`;
+      const detectedMember = detectMemberFromText(textToSearch);
+      const chosenMember = detectedMember || 'Thủ quỹ';
+
       setFormData({
         amount: result.amount !== undefined ? result.amount : '',
         description: result.description || 'Giao dịch theo biên lai',
         type: result.type || 'CHI',
         date: result.date || new Date().toLocaleDateString('vi-VN'),
         category: result.category || 'Đóng quỹ',
+        submittedBy: chosenMember,
         note: result.note || (result.payerOrReceiver ? `Người nhận: ${result.payerOrReceiver}` : ''),
         billImage: result.billImage || url,
         confidence: result.confidence || '99%',
@@ -125,12 +171,18 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
       }
     }
 
+    const author = formData.submittedBy || 'Thủ quỹ';
+    const isMemberExpense = formData.type === 'CHI' && author !== 'Thủ quỹ';
+
     onSaveScan({
       amount: num,
       description: formData.description.trim(),
       type: formData.type,
       date: formData.date || new Date().toLocaleDateString('vi-VN'),
       category: formData.category,
+      submittedBy: author,
+      recordedBy: author,
+      reimbursementStatus: isMemberExpense ? 'PENDING' : 'REIMBURSED',
       note: formData.note,
       billImage: finalBillImage
     });
@@ -144,6 +196,18 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     setHasScanned(false);
     setScanning(false);
     setError('');
+    setFormData({
+      amount: '',
+      description: '',
+      type: 'CHI',
+      date: new Date().toLocaleDateString('vi-VN'),
+      category: 'Ăn uống',
+      submittedBy: 'Thủ quỹ',
+      note: '',
+      billImage: '',
+      confidence: '99%',
+      source: 'Gemini 1.5 Flash'
+    });
     onClose();
   };
 
@@ -380,7 +444,52 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   </div>
                 </div>
 
-                {/* 5. Ghi chú */}
+                {/* 5. Người thực hiện / Thành viên nhập quỹ */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Người thực hiện / Thành viên nhập quỹ:
+                    </label>
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border transition ${
+                      formData.submittedBy !== 'Thủ quỹ'
+                        ? 'text-emerald-700 bg-emerald-50 border-emerald-300 shadow-2xs'
+                        : 'text-slate-600 bg-slate-100 border-slate-200'
+                    }`}>
+                      {formData.submittedBy !== 'Thủ quỹ' ? `👤 Đã chọn: ${formData.submittedBy}` : '🏛️ Mặc định: Thủ quỹ'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 pt-0.5">
+                    {FUND_MEMBERS.map((member) => {
+                      const isSelected = formData.submittedBy === member;
+                      return (
+                        <button
+                          key={member}
+                          type="button"
+                          onClick={() => handleToggleMember(member)}
+                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150 cursor-pointer shadow-2xs ${
+                            isSelected
+                              ? 'bg-emerald-700 text-white shadow-md shadow-emerald-700/30 ring-2 ring-emerald-600/30 scale-102 font-extrabold'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200/90 hover:text-slate-900 border border-slate-200'
+                          }`}
+                          title={isSelected ? `Bấm lại để hủy chọn và quay về 'Thủ quỹ'` : `Chọn ${member}`}
+                        >
+                          {isSelected ? (
+                            <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          )}
+                          <span>{member}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    💡 Tự động nhận diện tên thành viên từ biên lai/nội dung ck. Bấm chọn để đổi hoặc hủy về "Thủ quỹ".
+                  </p>
+                </div>
+
+                {/* 6. Ghi chú */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Ghi chú chi tiết:
