@@ -184,8 +184,7 @@ export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', cust
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env');
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-2.5-flash', 'gemini-1.5-flash-latest', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.7-flash'];
 
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');

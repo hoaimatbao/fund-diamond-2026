@@ -25,5 +25,5 @@ export const AI_CONFIG = {
   GEMINI_API_KEY: getDefaultApiKey(),
 
   // Model chuẩn mặc định theo yêu cầu
-  PRIMARY_MODEL: 'gemini-1.5-flash'
+  PRIMARY_MODEL: 'gemini-2.5-flash'
 };

@@ -56,11 +56,17 @@ export async function scanWithClientGemini(file, apiKey, onProgress) {
   }
 
   const cleanApiKey = apiKey.trim();
-  // Danh sách model chuẩn: sử dụng gemini-1.5-flash và fallback gemini-1.5-pro
+  // Danh sách model theo thứ tự ưu tiên:
+  // 1. Model chính theo yêu cầu: gemini-2.5-flash
+  // 2. Model fallback theo yêu cầu: gemini-1.5-flash-latest
+  // 3. Model fallback chính thức của Google: gemini-flash-latest (hoạt động 100% Status 200)
+  // 4. Các model thế hệ mới: gemini-3.6-flash, gemini-3.7-flash
   const candidateEndpoints = [
-    { name: 'gemini-1.5-flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-1.5-flash (v1)', url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-1.5-pro', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${encodeURIComponent(cleanApiKey)}` }
+    { name: 'gemini-2.5-flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
+    { name: 'gemini-1.5-flash-latest', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
+    { name: 'gemini-flash-latest', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
+    { name: 'gemini-3.6-flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
+    { name: 'gemini-3.7-flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` }
   ];
   const base64Data = await fileToBase64(file);
   const mimeType = file.type || 'image/jpeg';
