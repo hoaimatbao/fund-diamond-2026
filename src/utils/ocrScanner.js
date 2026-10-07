@@ -1,4 +1,4 @@
-import { AI_CONFIG } from '../config/aiConfig';
+import { AI_CONFIG } from '../config/aiConfig.js';
 
 /**
  * Module xử lý OCR và nhận diện hình ảnh biên lai / hóa đơn bằng Google Gemini AI Vision.
@@ -13,9 +13,10 @@ import { AI_CONFIG } from '../config/aiConfig';
  * 4. LocalStorage
  */
 export function getGeminiApiKey() {
-  const configKey = (AI_CONFIG?.GEMINI_API_KEY || '').trim();
   const localKey = typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '').trim() : '';
-  return configKey || localKey || '';
+  const configKey = (AI_CONFIG?.GEMINI_API_KEY || '').trim();
+  const envKey = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_GEMINI_API_KEY || import.meta.env?.GEMINI_API_KEY) || '').trim();
+  return localKey || configKey || envKey || '';
 }
 
 /**
@@ -44,6 +45,70 @@ export function compressAndResizeImage(file, maxWidth = 1024, quality = 0.75) {
       return resolve({ base64: '', mimeType: 'image/jpeg', blob: null });
     }
 
+    // Trường hợp đầu vào là chuỗi Base64 hoặc Data URL
+    if (typeof file === 'string') {
+      let base64 = file;
+      let mimeType = 'image/jpeg';
+      let dataUrl = file;
+
+      if (file.startsWith('data:')) {
+        const matches = file.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          mimeType = matches[1];
+          base64 = matches[2];
+        } else {
+          base64 = file.split(',')[1] || file;
+        }
+      } else {
+        dataUrl = `data:image/jpeg;base64,${file}`;
+      }
+
+      if (typeof window === 'undefined' || typeof Image === 'undefined') {
+        return resolve({ base64, mimeType, blob: null });
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            return resolve({ base64, mimeType, blob: null });
+          }
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const outMime = 'image/jpeg';
+          const outDataUrl = canvas.toDataURL(outMime, quality);
+          const outBase64 = outDataUrl.includes(',') ? outDataUrl.split(',')[1] : outDataUrl;
+
+          if (canvas.toBlob) {
+            canvas.toBlob((blob) => {
+              resolve({ base64: outBase64, mimeType: outMime, blob });
+            }, outMime, quality);
+          } else {
+            resolve({ base64: outBase64, mimeType: outMime, blob: null });
+          }
+        } catch {
+          resolve({ base64, mimeType, blob: null });
+        }
+      };
+      img.onerror = () => {
+        resolve({ base64, mimeType, blob: null });
+      };
+      img.src = dataUrl;
+      return;
+    }
+
     // Nếu không có Canvas / Image (Node/SSR/Test)
     if (typeof window === 'undefined' || typeof Image === 'undefined') {
       const reader = new FileReader();
@@ -57,8 +122,17 @@ export function compressAndResizeImage(file, maxWidth = 1024, quality = 0.75) {
       return;
     }
 
+    let objectUrl = '';
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch {
+      fileToBase64(file)
+        .then(base64 => resolve({ base64, mimeType: file.type || 'image/jpeg', blob: file }))
+        .catch(() => resolve({ base64: '', mimeType: 'image/jpeg', blob: file }));
+      return;
+    }
+
     const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
 
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
@@ -116,6 +190,11 @@ export function compressAndResizeImage(file, maxWidth = 1024, quality = 0.75) {
  */
 export function fileToBase64(file) {
   return new Promise((resolve, reject) => {
+    if (!file) return resolve('');
+    if (typeof file === 'string') {
+      const b64 = file.includes(',') ? file.split(',')[1] : file;
+      return resolve(b64);
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
@@ -128,7 +207,7 @@ export function fileToBase64(file) {
 }
 
 // Lưu model hoạt động nhanh nhất đã xác thực thành công để không bao giờ phải thử lại
-let cachedWorkingModel = 'gemini-flash-latest';
+let cachedWorkingModel = 'gemini-3.8-flash';
 
 /**
  * Gọi trực tiếp REST API của Google Gemini Flash tốc độ cao
@@ -191,13 +270,18 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 }
 `;
 
-  // Cấu hình danh sách endpoint theo thứ tự ưu tiên tốc độ cao nhất
+  // Cấu hình danh sách endpoint theo đúng model được hỗ trợ: gemini-3.8-flash
   const candidateEndpoints = [
-    { name: cachedWorkingModel || 'gemini-flash-latest', displayName: 'Gemini 2.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/${cachedWorkingModel || 'gemini-flash-latest'}:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-flash-latest', displayName: 'Gemini 2.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` },
-    { name: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash', url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` }
+    { 
+      name: 'gemini-3.8-flash', 
+      displayName: 'Gemini 3.8 Flash', 
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
+    },
+    { 
+      name: 'gemini-flash-latest', 
+      displayName: 'Gemini Flash', 
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
+    }
   ];
 
   // Lọc trùng lặp model
@@ -230,10 +314,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
           ],
           generationConfig: {
             response_mime_type: 'application/json',
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-            max_output_tokens: 500,
-            maxOutputTokens: 500
+            temperature: 0.2
           }
         })
       });
@@ -282,7 +363,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
         payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
         note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
         confidence: '99%',
-        source: `Gemini 2.5 Flash`,
+        source: `Gemini 3.8 Flash`,
         compressedBlob
       };
     } catch (err) {
@@ -313,7 +394,11 @@ export async function scanBillImage(file, onProgress) {
     const result = await scanWithClientGemini(file, apiKey, onProgress);
     return {
       ...result,
-      billImage: result.compressedBlob ? URL.createObjectURL(result.compressedBlob) : (file ? URL.createObjectURL(file) : '')
+      billImage: result.compressedBlob 
+        ? URL.createObjectURL(result.compressedBlob) 
+        : (file instanceof Blob 
+            ? URL.createObjectURL(file) 
+            : (typeof file === 'string' ? file : ''))
     };
   } catch (geminiError) {
     console.error('Lỗi Gemini Vision:', geminiError);

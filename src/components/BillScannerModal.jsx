@@ -70,7 +70,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     note: '',
     billImage: '',
     confidence: '99%',
-    source: 'Gemini 2.5 Flash'
+    source: 'Gemini 3.8 Flash'
   });
 
   const [hasScanned, setHasScanned] = useState(false);
@@ -86,7 +86,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
   };
 
   const handleFileChange = async (e) => {
-    const selected = e.target.files[0];
+    const selected = e.target?.files?.[0];
     if (selected) {
       setFile(selected);
       const url = URL.createObjectURL(selected);
@@ -96,11 +96,19 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
       // Auto start scan on file select
       await performScan(selected, url);
     }
+    // Reset file input to allow selecting the same image again
+    if (e.target) {
+      e.target.value = '';
+    }
   };
 
   const performScan = async (fileObj, url) => {
+    if (!fileObj) {
+      setError('Vui lòng chọn hoặc chụp ảnh hóa đơn hợp lệ.');
+      return;
+    }
     setScanning(true);
-    setScanStatusText('Đang gửi ảnh sang Gemini 2.5 Flash bóc tách thông tin...');
+    setScanStatusText('Đang gửi ảnh sang Gemini 3.8 Flash bóc tách thông tin...');
     setError('');
 
     try {
@@ -145,7 +153,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
         billImage: result.billImage || url,
         compressedBlob: result.compressedBlob || null,
         confidence: result.confidence || '99%',
-        source: result.source || 'Gemini 2.5 Flash'
+        source: result.source || 'Gemini 3.8 Flash'
       });
       setHasScanned(true);
     } catch (err) {
@@ -233,7 +241,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
       note: '',
       billImage: '',
       confidence: '99%',
-      source: 'Gemini 1.5 Flash'
+      source: 'Gemini 3.8 Flash'
     });
     onClose();
   };
@@ -256,7 +264,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   AI Quét Bill & Hóa Đơn Thông Minh
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/20 text-white border border-white/30 uppercase tracking-wider">
-                  Gemini 1.5 Flash
+                  Gemini 3.8 Flash
                 </span>
               </div>
               <p className="text-xs text-white/80">
@@ -285,7 +293,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                 Chụp ảnh hoặc tải lên ảnh biên lai / hóa đơn
               </h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
-                Hệ thống tự động sử dụng AI Gemini 2.5 Flash để nhận diện biên lai chuyển khoản ngân hàng, hóa đơn ăn uống, bóc tách chính xác số tiền và nội dung.
+                Hệ thống tự động sử dụng AI Gemini 3.8 Flash để nhận diện biên lai chuyển khoản ngân hàng, hóa đơn ăn uống, bóc tách chính xác số tiền và nội dung.
               </p>
 
               {/* 2 nút tải ảnh riêng biệt: Chụp ảnh bill & Chọn ảnh từ thư viện */}
@@ -356,7 +364,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                 {scanning && (
                   <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-2xs flex flex-col items-center justify-center text-white p-4 text-center">
                     <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mb-2" />
-                    <span className="text-sm font-bold">{scanStatusText || 'Gemini AI đang phân tích ảnh...'}</span>
+                    <span className="text-sm font-bold">{scanStatusText || 'Gemini 3.8 Flash AI đang phân tích ảnh...'}</span>
                     <span className="text-xs text-emerald-300 mt-1">Đang bóc tách số tiền chuyển khoản, ngày và người nhận</span>
                   </div>
                 )}
