@@ -15,7 +15,8 @@ import {
   RefreshCw,
   Zap,
   AlertCircle,
-  Check
+  Check,
+  ImageIcon
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { scanBillImage } from '../utils/ocrScanner';
@@ -261,15 +262,28 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                 Hệ thống tự động sử dụng AI Gemini 2.5 Flash để nhận diện biên lai chuyển khoản ngân hàng, hóa đơn ăn uống, bóc tách chính xác số tiền và nội dung.
               </p>
 
-              {/* Nút Chọn ảnh duy nhất, căn giữa tuyệt đối */}
-              <div className="flex items-center justify-center">
-                <label className="inline-flex items-center gap-2.5 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl cursor-pointer shadow-lg shadow-emerald-600/25 transition-all hover:scale-105 active:scale-95">
-                  <Upload className="w-4 h-4" />
-                  <span>Chọn ảnh từ máy / Camera</span>
+              {/* 2 nút tải ảnh riêng biệt: Chụp ảnh bill & Chọn ảnh từ thư viện */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md mx-auto">
+                {/* Nút 1: Chụp ảnh bill (mở Camera trực tiếp) */}
+                <label className="w-full sm:w-1/2 inline-flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl cursor-pointer shadow-md shadow-emerald-600/25 transition-all hover:scale-102 active:scale-98">
+                  <Camera className="w-4 h-4 shrink-0" />
+                  <span>📸 Chụp ảnh bill</span>
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+
+                {/* Nút 2: Chọn ảnh từ thư viện (iOS & Android mở Photo Library / menu chuẩn) */}
+                <label className="w-full sm:w-1/2 inline-flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 hover:text-emerald-700 border border-slate-300 hover:border-emerald-400 text-xs sm:text-sm font-bold rounded-xl cursor-pointer shadow-xs transition-all hover:scale-102 active:scale-98">
+                  <ImageIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>🖼️ Chọn ảnh từ thư viện</span>
+                  <input
+                    type="file"
+                    accept="image/*"
                     onChange={handleFileChange}
                     className="hidden"
                   />
@@ -287,18 +301,30 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   className="max-h-40 w-auto object-contain rounded shadow-xs"
                 />
 
-                {/* Change photo button */}
-                <label className="absolute top-2 right-2 px-2.5 py-1 bg-white/90 hover:bg-white text-slate-700 rounded-lg text-xs font-semibold shadow-md cursor-pointer border border-slate-200 flex items-center gap-1 transition">
-                  <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Đổi ảnh khác</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
+                {/* Đổi ảnh: Chụp lại hoặc Chọn ảnh khác từ thư viện */}
+                <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                  <label className="px-2.5 py-1 bg-white/90 hover:bg-white text-slate-700 rounded-lg text-xs font-semibold shadow-md cursor-pointer border border-slate-200 flex items-center gap-1 transition">
+                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="hidden sm:inline">Chụp lại</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                  <label className="px-2.5 py-1 bg-white/90 hover:bg-white text-slate-700 rounded-lg text-xs font-semibold shadow-md cursor-pointer border border-slate-200 flex items-center gap-1 transition">
+                    <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Đổi ảnh khác</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
 
                 {/* Scanning Overlay */}
                 {scanning && (
