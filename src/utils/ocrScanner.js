@@ -127,9 +127,6 @@ export function fileToBase64(file) {
   });
 }
 
-// Lưu model hoạt động nhanh nhất đã xác thực thành công để không bao giờ phải thử lại
-let cachedWorkingModel = 'gemini-2.5-flash';
-
 /**
  * Gọi trực tiếp REST API của Google Gemini Flash tốc độ cao
  */
@@ -191,113 +188,85 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 }
 `;
 
-  // Cấu hình danh sách endpoint theo chuẩn gemini-2.5-flash
-  const candidateEndpoints = [
-    { 
-      name: 'gemini-2.5-flash', 
-      displayName: 'Gemini 2.5 Flash', 
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
-    },
-    { 
-      name: 'gemini-flash-latest', 
-      displayName: 'Gemini 2.5 Flash', 
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
-    },
-    { 
-      name: 'gemini-1.5-flash', 
-      displayName: 'Gemini 1.5 Flash', 
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}` 
-    }
-  ];
+  // 2. URL Endpoint chuẩn Gemini 2.5 Flash
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
 
-  // Lọc trùng lặp model
-  const uniqueEndpoints = candidateEndpoints.filter((item, index, self) =>
-    index === self.findIndex((t) => t.name === item.name)
-  );
+  if (onProgress) onProgress('Đang gửi ảnh sang Gemini 2.5 Flash bóc tách...');
 
-  let lastError = null;
-
-  for (const candidate of uniqueEndpoints) {
-    try {
-      if (onProgress) onProgress(`Đang gửi ảnh sang ${candidate.displayName} bóc tách...`);
-
-      const response = await fetch(candidate.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
+  // 3. Body Request tinh gọn tối đa theo chuẩn Google API v1beta
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
             {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Data
-                  }
-                }
-              ]
+              inline_data: {
+                mime_type: 'image/jpeg',
+                data: base64Data
+              }
             }
-          ],
-          generationConfig: {
-            temperature: 0.2
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorJson = await response.json().catch(() => ({}));
-        const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
-        const googleStatus = errorJson.error?.status || '';
-        const fullError = `Google API (${candidate.name}) [${googleStatus || response.status}]: ${googleMessage}`;
-        console.warn('Candidate endpoint error:', fullError);
-        throw new Error(fullError);
+          ]
+        }
+      ],
+      generationConfig: {
+        response_mime_type: 'application/json',
+        temperature: 0.1
       }
+    })
+  });
 
-      const json = await response.json();
-      const textOutput = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!textOutput) {
-        const reason = json.candidates?.[0]?.finishReason;
-        throw new Error(`Gemini không trả về nội dung kết quả (Lý do: ${reason || 'Không rõ'})`);
-      }
-
-      const jsonMatch = textOutput.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Gemini trả về văn bản không phải JSON: ' + textOutput.slice(0, 150));
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      let parsedAmount = parsed.amount;
-      if (typeof parsedAmount === 'string') {
-        parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
-      } else {
-        parsedAmount = Math.round(Number(parsedAmount)) || 0;
-      }
-
-      // Lưu lại model thành công để lần sau gọi trực tiếp không mất thời gian thử lại
-      cachedWorkingModel = candidate.name;
-
-      const resolvedType = (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI';
-
-      return {
-        amount: parsedAmount || '',
-        description: parsed.description || 'Giao dịch theo biên lai',
-        type: resolvedType,
-        date: parsed.date || todayFormatted,
-        category: parsed.category || 'Ăn uống',
-        member: parsed.member || '',
-        payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
-        note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
-        confidence: '99%',
-        source: `Gemini 2.5 Flash`,
-        compressedBlob
-      };
-    } catch (err) {
-      console.warn(`Thử model ${candidate.name} thất bại:`, err.message);
-      lastError = err;
-    }
+  if (!response.ok) {
+    const errorJson = await response.json().catch(() => ({}));
+    const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
+    const googleStatus = errorJson.error?.status || '';
+    const fullError = `Google API (gemini-2.5-flash) [${googleStatus || response.status}]: ${googleMessage}`;
+    console.warn('Gemini 2.5 Flash API error:', fullError);
+    throw new Error(fullError);
   }
 
-  throw lastError || new Error('Không thể kết nối tới Google Gemini Vision API');
+  const json = await response.json();
+  const textOutput = json.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!textOutput) {
+    const reason = json.candidates?.[0]?.finishReason;
+    throw new Error(`Gemini không trả về nội dung kết quả (Lý do: ${reason || 'Không rõ'})`);
+  }
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(textOutput);
+  } catch {
+    const jsonMatch = textOutput.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Gemini trả về văn bản không phải JSON: ' + textOutput.slice(0, 150));
+    }
+    parsed = JSON.parse(jsonMatch[0]);
+  }
+
+  let parsedAmount = parsed.amount;
+  if (typeof parsedAmount === 'string') {
+    parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
+  } else {
+    parsedAmount = Math.round(Number(parsedAmount)) || 0;
+  }
+
+  const resolvedType = (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI';
+
+  return {
+    amount: parsedAmount || '',
+    description: parsed.description || 'Giao dịch theo biên lai',
+    type: resolvedType,
+    date: parsed.date || todayFormatted,
+    category: parsed.category || 'Ăn uống',
+    member: parsed.member || '',
+    payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
+    note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
+    confidence: '99%',
+    source: 'Gemini 2.5 Flash',
+    compressedBlob
+  };
 }
 
 /**
