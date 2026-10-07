@@ -1,0 +1,98 @@
+# KẾ HOẠCH DỰ ÁN: BẢNG QUẢN LÝ QUỸ TEAM DIAMOND 2026 (SMART TEAM FUND)
+
+## 1. Tổng quan dự án
+- **Tên dự án:** Smart Fund Team Diamond 2026
+- **Mục tiêu:** Chuyển đổi toàn diện "Bảng Quản Lý Quỹ Team Diamond 2026" từ file bảng tính Excel thủ công sang nền tảng web trực quan, minh bạch và tự động hóa.
+- **Điểm đột phá:** Thủ quỹ chỉ cần chụp ảnh bill/hóa đơn ăn uống hoặc biên lai chuyển khoản thưởng/đóng quỹ, hệ thống AI tự quét số tiền, phân loại Thu/Chi và cộng/trừ trực tiếp vào số dư quỹ.
+- **Dữ liệu hiện tại của quỹ (mốc đối soát):**
+  - **TỔNG THU:** `53.104.581 đ`
+  - **TỔNG CHI:** `41.992.450 đ`
+  - **TỔNG CUỐI (Số dư khả dụng):** `11.112.131 đ`
+
+---
+
+## 2. Cấu trúc trường dữ liệu (Schema)
+
+Kế thừa chính xác cấu trúc cột từ bảng Excel thực tế:
+- `id` (STT): Số thứ tự tăng dần.
+- `date` (Ngày nhập quỹ): Định dạng `DD/MM/YYYY`.
+- `description` (Lý do): Diễn giải nội dung giao dịch (ví dụ: "chi ăn chè", "thưởng các giải team", "đi ăn Sen Tây Hồ", "chi thưởng team Thanh, Hoài...").
+- `type`: Phân loại `THU` hoặc `CHI`.
+- `amount`: Số tiền giao dịch (VNĐ).
+- `billImage`: Link ảnh hoặc chuỗi base64 của hóa đơn đính kèm để cả phòng đối soát.
+
+---
+
+## 3. Tính năng cốt lõi
+
+### 3.1. Phân hệ Bảng quỹ công khai (Dành cho thành viên team)
+- **3 thẻ thống kê nổi bật (KPI Header):**
+  - Thẻ Xanh lá: **TỔNG THU** (`53.104.581 đ`).
+  - Thẻ Đỏ cam: **TỔNG CHI** (`41.992.450 đ`).
+  - Thẻ Vàng nổi bật: **TỔNG CUỐI / SỐ DƯ HIỆN TẠI** (`11.112.131 đ`).
+- **Bảng dữ liệu Thu - Chi:**
+  - Hiển thị theo thứ tự thời gian mới nhất lên đầu (hoặc theo STT chuẩn như file Excel).
+  - Số tiền được định dạng có dấu chấm phân cách hàng nghìn (ví dụ: `3.552.000 đ`).
+  - Biểu tượng xem nhanh ảnh bill đính kèm ở từng dòng.
+- **Tìm kiếm & Bộ lọc nhanh:**
+  - Ô tìm kiếm theo lý do (gõ "ăn chè", "Sen Tây Hồ", "thưởng team"... sẽ lọc ngay các dòng tương ứng).
+  - Bộ lọc theo tháng hoặc theo trạng thái (Tất cả / Chỉ xem Thu / Chỉ xem Chi).
+
+### 3.2. Phân hệ Thủ quỹ & AI Scan Bill (Bảo vệ bằng PIN `123456`)
+- **Quét bill thông minh:**
+  - Nút bấm mở camera điện thoại hoặc tải ảnh chụp hóa đơn (bill ăn trưa, cà phê, trà sữa, biên lai ngân hàng).
+  - Tự động nhận diện nội dung:
+    + Từ khóa hóa đơn dịch vụ/ẩm thực 👉 Tự động chọn loại **CHI (-)**.
+    + Biên lai nộp tiền/thưởng dự án/WS 👉 Tự động chọn loại **THU (+)**.
+    + Tự động bóc tách tổng số tiền cần thanh toán và ngày tháng.
+- **Xác nhận 1 chạm:** Màn hình popup điền sẵn thông tin bóc tách để thủ quỹ kiểm tra lại trước khi bấm "Lưu vào quỹ".
+- **Nhập thủ công dự phòng:** Đầy đủ form để nhập tay những khoản chi không có hóa đơn (tiền gửi xe, trà đá...).
+- **Chỉnh sửa / Xóa:** Quyền sửa sai sót hoặc xóa giao dịch nhập nhầm.
+
+---
+
+## 4. Kiến trúc kỹ thuật đề xuất (Tech Stack)
+
+- **Frontend:** React (Vite) + Tailwind CSS + Lucide Icons (thiết kế chuẩn Mobile-first để thủ quỹ thao tác ngay trên điện thoại).
+- **Backend & Database:** Node.js (Express) + File CSDL cục bộ `server/data/fund_diamond_2026.json` (giúp toàn bộ web và dữ liệu nằm trọn 1 repo, backup cực dễ, không tốn chi phí thuê database cloud riêng).
+- **Mô-đun đọc ảnh bill:** Tích hợp AI Vision API (hoặc nhận diện OCR tiếng Việt) trích xuất dữ liệu trả về dạng JSON.
+- **Triển khai:** Vibe Host (kèm file `public/_redirects` để điều hướng SPA mượt mà, không gặp lỗi 403/404)[cite: 2].
+
+---
+
+## 5. Cấu trúc thư mục dự án
+
+```text
+fund-diamond-2026/
+├── public/
+│   ├── uploads/                      # Thư mục lưu ảnh bill
+│   └── _redirects                    # File điều hướng máy chủ SPA
+├── src/
+│   ├── components/
+│   │   ├── SummaryCards.jsx          # 3 thẻ Tổng Thu, Tổng Chi, Tổng Cuối
+│   │   ├── FundTable.jsx             # Bảng danh sách STT, Ngày, Lý do, Thu, Chi
+│   │   ├── BillScannerModal.jsx      # Modal chụp/tải ảnh bill & AI phân tích
+│   │   └── ManualEntryModal.jsx      # Form nhập tay dự phòng
+│   ├── pages/
+│   │   └── Dashboard.jsx             # Màn hình chính
+│   ├── App.jsx
+│   └── main.jsx
+├── server/
+│   ├── data/
+│   │   └── fund_diamond_2026.json    # Dữ liệu quỹ gốc và các giao dịch mới
+│   ├── routes/
+│   │   └── api.js                    # API thêm, sửa, xóa, bóc tách bill
+│   └── index.js
+├── .env.example
+├── package.json
+└── README.md
+## 6. Lộ trình thực hiện từng bước (Roadmap)
+Bước 1 (Khởi tạo dữ liệu): Nhập các dòng giao dịch từ STT 112 đến 132 vào file JSON mẫu với số dư lũy kế ban đầu khớp đúng 11.112.131 đ.
+
+Bước 2 (Giao diện bảng quỹ): Dựng trang chủ gồm 3 thẻ số dư và bảng giao dịch hiển thị đúng mẫu Excel TEAM DIAMOND 2026.
+
+Bước 3 (Logic tính toán tự động): Viết logic khi thêm bất kỳ dòng Thu/Chi mới nào thì Tổng Thu, Tổng Chi và Tổng Cuối tự động cập nhật ngay trên màn hình.
+
+Bước 4 (Tích hợp AI Quét Bill): Tạo khung upload ảnh, gửi ảnh sang mô-đun AI để trích xuất số tiền và lý do.
+
+Bước 5 (Đóng gói & Đưa lên host): Đóng gói dự án và triển khai lên Vibe Host để chia sẻ đường link cho toàn bộ thành viên trong phòng truy cập.
