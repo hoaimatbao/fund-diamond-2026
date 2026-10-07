@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, PlusCircle, ArrowUpRight, ArrowDownRight, Upload, Calendar, DollarSign, FileText, CheckCircle2, Check } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 
-const FUND_MEMBERS = ['Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
+const FUND_MEMBERS = ['Hoài', 'Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
 
 export default function ManualEntryModal({ isOpen, onClose, onSave, editingTransaction }) {
   const [formData, setFormData] = useState({

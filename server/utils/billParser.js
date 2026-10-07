@@ -184,38 +184,67 @@ export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', cust
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env');
   }
 
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash-latest', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.7-flash'];
+  const models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.8-flash'];
 
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');
   const todayFormatted = new Date().toLocaleDateString('vi-VN');
 
   const prompt = `
-Đây là biên lai/bill chuyển khoản ngân hàng Việt Nam. 
-Hãy đọc kỹ hình ảnh và trích xuất thông tin theo đúng các quy tắc nghiêm ngặt:
-- SỐ TIỀN (amount): Là con số to nhất, nổi bật nhất nằm ngay cạnh hoặc dưới chữ 'Thành công' và trước ký hiệu 'đ'. Trong ảnh này con số đó là 430000. TUYỆT ĐỐI không lấy số tài khoản (03808218301) hay số ngày tháng làm số tiền. Trả về dạng số nguyên (integer, ví dụ 430000).
-- NỘI DUNG (description): Lấy từ dòng 'Nội dung' (Team Diamond ck quy NB T102026).
-- NGÀY (date): 07/10/2026 (hoặc ngày ghi trên biên lai định dạng DD/MM/YYYY).
-- NGƯỜI NHẬN / NGƯỜI THỤ HƯỞNG (payerOrReceiver): NGUYEN THI PHUONG NGAN.
-- LOẠI (type): Nếu là biên lai chuyển tiền vào quỹ/đóng quỹ -> "THU". Nếu là hóa đơn chi tiền -> "CHI".
-- DANH MỤC (category): 'Đóng quỹ'.
+Bạn là trợ lý AI chuyên bóc tách thông tin hóa đơn, biên lai ngân hàng và đơn đặt hàng tại Việt Nam (ShopeeFood, GrabFood, Baemin, chuyển khoản ngân hàng, nhà hàng).
 
-TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ THEO CẤU TRÚC (không kèm lời dẫn):
+HÃY ĐỌC KỸ HÌNH ẢNH VÀ TRÍCH XUẤT THEO CÁC QUY TẮC NGHIÊM NGẶT:
+1. SỐ TIỀN (amount):
+   - Với ảnh tóm tắt đơn hàng (ShopeeFood / GrabFood...): Luôn lấy đúng dòng "Tổng cộng" ở dưới cùng (ví dụ: "87.040đ" hoặc "87.040" -> 87040).
+   - Với biên lai chuyển khoản ngân hàng: Lấy số tiền lớn nhất, nổi bật nhất nằm cạnh hoặc dưới chữ "Thành công" và trước chữ "đ" (ví dụ: 430000). TUYỆT ĐỐI không lấy số tài khoản hay ngày tháng.
+   - Với hóa đơn giấy: Lấy tổng thanh toán cuối cùng.
+   - Trả về dạng số nguyên (integer, ví dụ: 87040).
+
+2. TÊN QUÁN / NỘI DUNG (description):
+   - Với ảnh tóm tắt đơn nhóm (ShopeeFood / GrabFood): Lấy dòng đầu tiên có biểu tượng địa điểm xanh hoặc tên quán (ví dụ: "Chè Phan Cải - Chè Ngon, Kem Bơ Xôi...").
+   - Với biên lai ngân hàng: Lấy dòng "Nội dung" chuyển khoản.
+   - Với hóa đơn giấy: Lấy tên quán ăn hoặc món ăn chính.
+
+3. LOẠI GIAO DỊCH (type):
+   - Nếu là mua đồ ăn, chè, trà sữa, chi tiêu, thanh toán tiền -> "expense".
+   - Nếu là nộp tiền quỹ, đóng quỹ, thưởng vào quỹ -> "income".
+
+4. NGÀY GIAO DỊCH (date):
+   - Ngày ghi trên biên lai/đơn hàng định dạng DD/MM/YYYY. Nếu không có, dùng ngày hôm nay: "${todayFormatted}".
+
+5. DANH MỤC (category):
+   - Đơn ăn uống, trà sữa, chè, cafe -> "Ăn uống (Chè, trà sữa, cafe...)".
+   - Tiệc, lẩu, buffet, nướng -> "Liên hoan (Lẩu, Buffet, BBQ...)".
+   - Đóng quỹ định kỳ -> "Đóng quỹ".
+   - Khen thưởng -> "Khen thưởng".
+   - Khác -> "Khác".
+
+6. THÀNH VIÊN (member):
+   - Ưu tiên tìm xem người đặt đơn, người tham gia hoặc người chuyển khoản/thụ hưởng có trùng hoặc chứa tên các thành viên nhóm: [Huyền Hoài, Hoài, Thanh, Hằng, Tuyển, Phương, Hà].
+   - Ví dụ: Người đặt "Huyền Hoài" hoặc "Hoài" -> "Huyền Hoài". Nếu không có ai trong danh sách thì để "Thủ quỹ".
+
+CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍCH DÔNG DÀI THEO CẤU TRÚC:
 {
-  "amount": 430000,
-  "description": "Team Diamond ck quy NB T102026",
-  "date": "07/10/2026",
-  "payerOrReceiver": "NGUYEN THI PHUONG NGAN",
-  "type": "THU",
-  "category": "Đóng quỹ",
-  "note": "Người nhận: NGUYEN THI PHUONG NGAN"
+  "amount": 87040,
+  "type": "expense",
+  "date": "${todayFormatted}",
+  "category": "Ăn uống (Chè, trà sữa, cafe...)",
+  "description": "Chè Phan Cải - Chè Ngon, Kem Bơ Xôi...",
+  "member": "Huyền Hoài"
 }
 `;
 
   let lastErr = null;
   for (const modelName of models) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+          maxOutputTokens: 500
+        }
+      });
       const result = await model.generateContent([
         prompt,
         {
@@ -233,13 +262,21 @@ TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ THEO CẤU TRÚC (không kèm lờ
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      let parsedAmount = parsed.amount;
+      if (typeof parsedAmount === 'string') {
+        parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
+      } else {
+        parsedAmount = Math.round(Number(parsedAmount)) || 0;
+      }
+
       return {
-        amount: Number(parsed.amount) || 0,
+        amount: parsedAmount || 0,
         description: parsed.description || 'Giao dịch theo biên lai',
-        type: parsed.type === 'THU' ? 'THU' : 'CHI',
+        type: (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI',
         date: parsed.date || todayFormatted,
-        category: parsed.category || 'Đóng quỹ',
-        note: parsed.note || (parsed.payerOrReceiver ? `Người nhận: ${parsed.payerOrReceiver}` : 'AI Gemini Vision trích xuất'),
+        category: parsed.category || 'Ăn uống',
+        member: parsed.member || '',
+        note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : 'AI Gemini Vision trích xuất',
         confidence: '99%'
       };
     } catch (err) {

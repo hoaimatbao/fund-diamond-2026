@@ -21,7 +21,7 @@ import {
 import { formatCurrency } from '../utils/formatters';
 import { scanBillImage } from '../utils/ocrScanner';
 
-const FUND_MEMBERS = ['Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
+const FUND_MEMBERS = ['Hoài', 'Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
 
 /**
  * Tự động nhận diện tên thành viên từ nội dung biên lai hoặc tên người gửi/nhận
@@ -34,6 +34,7 @@ function detectMemberFromText(text) {
     .toLowerCase();
 
   const memberKeywords = [
+    { name: 'Hoài', patterns: ['huyen hoai', 'huyenhoai', 'hoai ht', 'hoaiht', 'hoai'] },
     { name: 'Thanh', patterns: ['tran thi thanh', 'tranthithanh', 'thanh'] },
     { name: 'Hằng', patterns: ['nguyen thi hang', 'nguyenthihang', 'hang'] },
     { name: 'Tuyển', patterns: ['nguyen thi hong tuyen', 'nguyenthihongtuyen', 'tuyen'] },
@@ -105,22 +106,46 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     try {
       const result = await scanBillImage(fileObj, (msg) => setScanStatusText(msg));
       
-      // Tự động nhận diện thành viên từ kết quả quét AI (nội dung, người nhận, ghi chú)
-      const textToSearch = `${result.payerOrReceiver || ''} ${result.description || ''} ${result.note || ''}`;
+      // Tự động nhận diện thành viên từ kết quả quét AI (member, người đặt đơn, người nhận, nội dung)
+      const textToSearch = `${result.member || ''} ${result.payerOrReceiver || ''} ${result.description || ''} ${result.note || ''}`;
       const detectedMember = detectMemberFromText(textToSearch);
-      const chosenMember = detectedMember || 'Thủ quỹ';
+      const chosenMember = detectedMember || (result.member && result.member !== 'Thủ quỹ' ? result.member : 'Thủ quỹ');
+
+      // Chuẩn hóa category
+      let matchedCategory = 'Ăn uống';
+      const catLower = (result.category || '').toLowerCase();
+      if (catLower.includes('đóng quỹ') || result.type === 'THU' || result.type === 'income') {
+        matchedCategory = 'Đóng quỹ';
+      } else if (catLower.includes('liên hoan') || catLower.includes('lẩu') || catLower.includes('buffet') || catLower.includes('bbq')) {
+        matchedCategory = 'Liên hoan';
+      } else if (catLower.includes('thưởng dự án')) {
+        matchedCategory = 'Thưởng dự án';
+      } else if (catLower.includes('khen thưởng')) {
+        matchedCategory = 'Khen thưởng';
+      } else if (catLower.includes('quỹ ban đầu')) {
+        matchedCategory = 'Quỹ ban đầu';
+      } else if (catLower.includes('sinh nhật')) {
+        matchedCategory = 'Sinh nhật';
+      } else if (catLower.includes('teambuilding')) {
+        matchedCategory = 'Teambuilding';
+      } else if (catLower.includes('ăn uống') || catLower.includes('chè') || catLower.includes('trà sữa') || catLower.includes('cafe')) {
+        matchedCategory = 'Ăn uống';
+      } else if (result.category) {
+        matchedCategory = result.category;
+      }
 
       setFormData({
         amount: result.amount !== undefined ? result.amount : '',
         description: result.description || 'Giao dịch theo biên lai',
-        type: result.type || 'CHI',
+        type: (result.type === 'income' || result.type === 'THU') ? 'THU' : 'CHI',
         date: result.date || new Date().toLocaleDateString('vi-VN'),
-        category: result.category || 'Đóng quỹ',
+        category: matchedCategory,
         submittedBy: chosenMember,
-        note: result.note || (result.payerOrReceiver ? `Người nhận: ${result.payerOrReceiver}` : ''),
+        note: result.note || (result.member ? `Thành viên: ${result.member}` : (result.payerOrReceiver ? `Người nhận: ${result.payerOrReceiver}` : '')),
         billImage: result.billImage || url,
+        compressedBlob: result.compressedBlob || null,
         confidence: result.confidence || '99%',
-        source: result.source || 'Gemini 1.5 Flash'
+        source: result.source || 'Gemini 2.5 Flash'
       });
       setHasScanned(true);
     } catch (err) {
@@ -152,11 +177,12 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
 
     let finalBillImage = formData.billImage || previewUrl || null;
 
-    // If billImage is a blob: URL and we have the raw File, try upload to server if backend is active
-    if (file && finalBillImage && finalBillImage.startsWith('blob:')) {
+    // If billImage is a blob: URL and we have the File or compressed blob, upload to server
+    const fileToUpload = formData.compressedBlob || file;
+    if (fileToUpload && finalBillImage && finalBillImage.startsWith('blob:')) {
       try {
         const uploadData = new FormData();
-        uploadData.append('bill', file);
+        uploadData.append('bill', fileToUpload, file?.name || 'bill.jpg');
         const upRes = await fetch('/api/upload', {
           method: 'POST',
           body: uploadData
