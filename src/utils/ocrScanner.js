@@ -188,106 +188,137 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 }
 `;
 
-  // 2. Danh sách model dự phòng theo thứ tự ưu tiên
+  // 2. Danh sách model: Chính (gemini-3.8-flash), Dự phòng (gemini-3.8-pro)
   const MODELS = [
     'gemini-3.8-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash'
+    'gemini-3.8-pro'
   ];
 
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let lastError = null;
 
   for (let i = 0; i < MODELS.length; i++) {
     const modelName = MODELS[i];
+    const isFallback = i > 0;
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
+    const maxRetries = 2; // Thử lại tối đa 2 lần nếu máy chủ báo quá tải (UNAVAILABLE / 503)
 
-    try {
-      if (onProgress) {
-        if (i === 0) {
-          onProgress(`Đang gửi ảnh sang ${modelName} bóc tách...`);
-        } else {
-          onProgress(`Máy chủ bận, tự động chuyển sang model dự phòng ${modelName}...`);
-        }
-      }
-
-      // 3. Body Request tinh gọn tối đa theo chuẩn Google API v1beta
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: 'image/jpeg',
-                    data: base64Data
-                  }
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            response_mime_type: 'application/json',
-            temperature: 0.2
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorJson = await response.json().catch(() => ({}));
-        const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
-        const googleStatus = errorJson.error?.status || '';
-        const fullError = `Google API (${modelName}) [${googleStatus || response.status}]: ${googleMessage}`;
-        console.warn(`Model ${modelName} gặp lỗi/quá tải, chuyển model tiếp theo...:`, fullError);
-        throw new Error(fullError);
-      }
-
-      const json = await response.json();
-      const textOutput = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!textOutput) {
-        const reason = json.candidates?.[0]?.finishReason;
-        throw new Error(`Gemini (${modelName}) không trả về nội dung kết quả (Lý do: ${reason || 'Không rõ'})`);
-      }
-
-      let parsed = {};
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        parsed = JSON.parse(textOutput);
-      } catch {
-        const jsonMatch = textOutput.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error(`Gemini (${modelName}) trả về văn bản không phải JSON: ` + textOutput.slice(0, 150));
+        if (onProgress) {
+          if (attempt === 0) {
+            if (!isFallback) {
+              onProgress(`Đang gửi ảnh sang ${modelName} bóc tách...`);
+            } else {
+              onProgress(`Máy chủ bận, chuyển sang model dự phòng ${modelName}...`);
+            }
+          } else {
+            onProgress(`Máy chủ ${modelName} tạm quá tải, đang thử lại lần ${attempt}/${maxRetries} (chờ 1.5s)...`);
+          }
         }
-        parsed = JSON.parse(jsonMatch[0]);
+
+        // 3. Body Request tinh gọn tối đa theo chuẩn Google API v1beta
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: 'image/jpeg',
+                      data: base64Data
+                    }
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              response_mime_type: 'application/json',
+              temperature: 0.2
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errorJson = await response.json().catch(() => ({}));
+          const googleMessage = errorJson.error?.message || `Lỗi HTTP ${response.status}: ${response.statusText}`;
+          const googleStatus = errorJson.error?.status || '';
+          const fullError = `Google API (${modelName}) [${googleStatus || response.status}]: ${googleMessage}`;
+
+          const isOverloaded = response.status === 503 ||
+                               response.status === 429 ||
+                               googleStatus === 'UNAVAILABLE' ||
+                               /unavailable|high demand|overloaded/i.test(googleMessage);
+
+          if (isOverloaded && attempt < maxRetries) {
+            console.warn(`Model ${modelName} đang quá tải, delay 1.5s và thử lại lần ${attempt + 1}/${maxRetries}...:`, fullError);
+            if (onProgress) {
+              onProgress(`Máy chủ ${modelName} quá tải, đang tự động thử lại sau 1.5s (lần ${attempt + 1}/${maxRetries})...`);
+            }
+            await delay(1500);
+            continue;
+          }
+
+          console.warn(`Model ${modelName} thất bại (attempt ${attempt + 1}):`, fullError);
+          throw new Error(fullError);
+        }
+
+        const json = await response.json();
+        const textOutput = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!textOutput) {
+          const reason = json.candidates?.[0]?.finishReason;
+          throw new Error(`Gemini (${modelName}) không trả về nội dung kết quả (Lý do: ${reason || 'Không rõ'})`);
+        }
+
+        let parsed = {};
+        try {
+          parsed = JSON.parse(textOutput);
+        } catch {
+          const jsonMatch = textOutput.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            throw new Error(`Gemini (${modelName}) trả về văn bản không phải JSON: ` + textOutput.slice(0, 150));
+          }
+          parsed = JSON.parse(jsonMatch[0]);
+        }
+
+        let parsedAmount = parsed.amount;
+        if (typeof parsedAmount === 'string') {
+          parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
+        } else {
+          parsedAmount = Math.round(Number(parsedAmount)) || 0;
+        }
+
+        const resolvedType = (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI';
+
+        return {
+          amount: parsedAmount || '',
+          description: parsed.description || 'Giao dịch theo biên lai',
+          type: resolvedType,
+          date: parsed.date || todayFormatted,
+          category: parsed.category || 'Ăn uống',
+          member: parsed.member || '',
+          payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
+          note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
+          confidence: '99%',
+          source: `Gemini (${modelName})`,
+          compressedBlob
+        };
+      } catch (err) {
+        lastError = err;
+        const isOverloaded = /unavailable|503|429|high demand|overloaded/i.test(err.message);
+        if (isOverloaded && attempt < maxRetries) {
+          if (onProgress) {
+            onProgress(`Máy chủ ${modelName} quá tải, đang thử lại sau 1.5s (lần ${attempt + 1}/${maxRetries})...`);
+          }
+          await delay(1500);
+          continue;
+        }
+        // Hết số lần retry hoặc lỗi khác, thoát vòng lặp attempt để sang model dự phòng
+        break;
       }
-
-      let parsedAmount = parsed.amount;
-      if (typeof parsedAmount === 'string') {
-        parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
-      } else {
-        parsedAmount = Math.round(Number(parsedAmount)) || 0;
-      }
-
-      const resolvedType = (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI';
-
-      return {
-        amount: parsedAmount || '',
-        description: parsed.description || 'Giao dịch theo biên lai',
-        type: resolvedType,
-        date: parsed.date || todayFormatted,
-        category: parsed.category || 'Ăn uống',
-        member: parsed.member || '',
-        payerOrReceiver: parsed.member || parsed.payerOrReceiver || '',
-        note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : '',
-        confidence: '99%',
-        source: `Gemini (${modelName})`,
-        compressedBlob
-      };
-    } catch (err) {
-      console.warn(`Thử model ${modelName} thất bại:`, err.message);
-      lastError = err;
-      // Tự động chuyển ngay sang model tiếp theo trong danh sách mà không ngắt luồng
     }
   }
 

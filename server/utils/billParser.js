@@ -186,10 +186,10 @@ export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', cust
 
   const models = [
     'gemini-3.8-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash'
+    'gemini-3.8-pro'
   ];
 
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');
   const todayFormatted = new Date().toLocaleDateString('vi-VN');
@@ -239,52 +239,62 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
 `;
 
   let lastErr = null;
+  const maxRetries = 2;
+
   for (const modelName of models) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.2
-        }
-      });
-      const result = await model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.2
           }
+        });
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType
+            }
+          }
+        ]);
+
+        const responseText = result.response.text();
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Gemini không trả về định dạng JSON hợp lệ');
         }
-      ]);
 
-      const responseText = result.response.text();
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Gemini không trả về định dạng JSON hợp lệ');
+        const parsed = JSON.parse(jsonMatch[0]);
+        let parsedAmount = parsed.amount;
+        if (typeof parsedAmount === 'string') {
+          parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
+        } else {
+          parsedAmount = Math.round(Number(parsedAmount)) || 0;
+        }
+
+        return {
+          amount: parsedAmount || 0,
+          description: parsed.description || 'Giao dịch theo biên lai',
+          type: (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI',
+          date: parsed.date || todayFormatted,
+          category: parsed.category || 'Ăn uống',
+          member: parsed.member || '',
+          note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : 'AI Gemini Vision trích xuất',
+          confidence: '99%'
+        };
+      } catch (err) {
+        lastErr = err;
+        console.warn(`Model ${modelName} attempt ${attempt + 1} error in server:`, err.message);
+        const isOverloaded = /unavailable|503|429|high demand|overloaded/i.test(err.message);
+        if (isOverloaded && attempt < maxRetries) {
+          await delay(1500);
+          continue;
+        }
+        break;
       }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      let parsedAmount = parsed.amount;
-      if (typeof parsedAmount === 'string') {
-        parsedAmount = parseInt(parsedAmount.replace(/[^\d]/g, ''), 10) || 0;
-      } else {
-        parsedAmount = Math.round(Number(parsedAmount)) || 0;
-      }
-
-      return {
-        amount: parsedAmount || 0,
-        description: parsed.description || 'Giao dịch theo biên lai',
-        type: (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI',
-        date: parsed.date || todayFormatted,
-        category: parsed.category || 'Ăn uống',
-        member: parsed.member || '',
-        note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : 'AI Gemini Vision trích xuất',
-        confidence: '99%'
-      };
-    } catch (err) {
-      console.warn(`Model ${modelName} error in server:`, err.message);
-      lastErr = err;
     }
   }
 
