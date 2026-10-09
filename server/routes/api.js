@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { scanBillWithGemini, parseReceiptText } from '../utils/billParser.js';
+import { saveExcelToTargetFolder, listSavedExcelFiles, TARGET_FOLDER } from '../services/excelService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,6 +81,14 @@ function saveData(data) {
   };
 
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+
+  // Tự động lưu ngầm vào thư mục C:\Hoài\Quỹ Team khi có biến động quỹ
+  try {
+    saveExcelToTargetFolder();
+  } catch (err) {
+    console.warn('⚠️ Lỗi tự động lưu file Excel ngầm vào Quỹ Team khi có biến động quỹ:', err.message);
+  }
+
   return data;
 }
 
@@ -353,6 +362,52 @@ router.delete('/transactions/:id', (req, res) => {
     message: 'Đã xóa giao dịch',
     summary: saved.fundInfo.summary
   });
+});
+
+// POST /api/fund/export-excel-team - Xuất và lưu trực tiếp file Excel vào C:\Hoài\Quỹ Team
+router.post('/fund/export-excel-team', (req, res) => {
+  try {
+    const result = saveExcelToTargetFolder();
+    res.json({
+      success: true,
+      message: `Đã lưu file thành công vào ${result.targetDir}`,
+      ...result
+    });
+  } catch (err) {
+    console.error('Lỗi khi xuất và lưu file Excel vào thư mục Quỹ Team:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Không thể lưu file Excel vào thư mục chỉ định: ' + (err.message || err)
+    });
+  }
+});
+
+// GET /api/fund/excel-files - Lấy danh sách các file Excel đã lưu trong C:\Hoài\Quỹ Team
+router.get('/fund/excel-files', (req, res) => {
+  try {
+    const files = listSavedExcelFiles();
+    res.json({
+      success: true,
+      targetFolder: TARGET_FOLDER,
+      files
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/fund/download-excel - Tải file Excel đồng thời tự động lưu vào C:\Hoài\Quỹ Team
+router.get('/fund/download-excel', (req, res) => {
+  try {
+    const result = saveExcelToTargetFolder();
+    res.download(result.filePath, result.fileName, (err) => {
+      if (err) {
+        console.error('Lỗi gửi file tải về trình duyệt:', err);
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;

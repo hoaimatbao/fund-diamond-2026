@@ -8,10 +8,10 @@
     "excelSource": "quỹ team DM.xlsx",
     "summary": {
       "totalIncome": 53104581,
-      "totalExpense": 42422450,
-      "currentBalance": 10682131
+      "totalExpense": 42600597,
+      "currentBalance": 10503984
     },
-    "lastUpdated": "2026-10-07T04:37:24.800Z",
+    "lastUpdated": "2026-10-09T03:45:31.835Z",
     "memberCount": 6,
     "members": [
       "Thanh",
@@ -893,6 +893,32 @@
       "billImage": "/uploads/bill-1791347844740-363259945.jpg",
       "submittedBy": "Thủ quỹ",
       "recordedBy": "Thủ quỹ",
+      "reimbursementStatus": "REIMBURSED",
+      "note": ""
+    },
+    {
+      "id": 135,
+      "date": "7/10/2026",
+      "description": "ăn chè",
+      "type": "CHI",
+      "amount": 87040,
+      "category": "Ăn uống",
+      "billImage": "/uploads/bill-1791517522555-364269376.jpg",
+      "submittedBy": "Phương",
+      "recordedBy": "Phương",
+      "reimbursementStatus": "REIMBURSED",
+      "note": ""
+    },
+    {
+      "id": 136,
+      "date": "7/10/2026",
+      "description": "Trà sữa",
+      "type": "CHI",
+      "amount": 91107,
+      "category": "Ăn uống",
+      "billImage": "/uploads/bill-1791517510772-293834592.jpg",
+      "submittedBy": "Phương",
+      "recordedBy": "Phương",
       "reimbursementStatus": "REIMBURSED",
       "note": ""
     }

@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import apiRouter from './routes/api.js';
+import { initDailyClosingScheduler } from './services/dailyScheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,4 +44,11 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Smart Fund Server is running on http://localhost:${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}/api/fund`);
+  
+  // Tự động kích hoạt scheduler chốt sổ Excel 23:59 mỗi ngày
+  try {
+    initDailyClosingScheduler();
+  } catch (err) {
+    console.error('Lỗi khởi động scheduler chốt sổ Excel:', err);
+  }
 });

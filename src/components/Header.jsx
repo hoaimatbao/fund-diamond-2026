@@ -72,6 +72,7 @@ export default function Header({
             <button
               onClick={onExportExcel}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition hover:border-slate-400"
+              title="Xuất bảng tính Excel và lưu vào thư mục Quỹ Team"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span className="hidden sm:inline">Xuất Excel</span>

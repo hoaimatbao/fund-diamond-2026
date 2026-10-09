@@ -25,8 +25,8 @@ export default function Dashboard() {
     bannerDescription: '',
     summary: {
       totalIncome: 53104581,
-      totalExpense: 41992450,
-      currentBalance: 11112131
+      totalExpense: 42600597,
+      currentBalance: 10503984
     }
   });
   const [transactions, setTransactions] = useState(defaultFundData.transactions || []);
@@ -226,10 +226,20 @@ export default function Dashboard() {
     await handleSaveTransaction(scanData);
   };
 
-  // Export Excel / CSV
-  const handleExportExcel = () => {
-    exportToCSV(transactions, `Bang_Quy_Team_Diamond_2026_${new Date().toISOString().slice(0, 10)}.csv`);
-    showToast('Đã xuất file bảng tính Excel (CSV UTF-8) thành công', 'success');
+  // Export Excel: Tự động lưu vào C:\Hoài\Quỹ Team đồng thời tải về máy
+  const handleExportExcel = async () => {
+    try {
+      const res = await fetch('/api/fund/export-excel-team', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Đã lưu file ${data.fileName} vào C:\\Hoài\\Quỹ Team & tải về máy`, 'success');
+      }
+    } catch (err) {
+      console.warn('Lỗi lưu server Excel:', err);
+      showToast('Đã xuất file bảng tính về máy', 'info');
+    }
+    // Tải trực tiếp file Excel .xlsx từ server
+    window.location.href = '/api/fund/download-excel';
   };
 
   return (
