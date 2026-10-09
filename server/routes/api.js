@@ -129,6 +129,13 @@ router.get('/fund', (req, res) => {
   });
 });
 
+// GET /api/config/ai-key - Provide active Gemini key to client if needed
+router.get('/config/ai-key', (req, res) => {
+  const rawKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+  const apiKey = rawKey.replace(/^["']|["']$/g, '').trim();
+  res.json({ apiKey });
+});
+
 // PUT /api/fund/settings - Update general fund configuration (banner, members, etc.)
 router.put('/fund/settings', (req, res) => {
   const { memberCount, members, bannerTitle, bannerDescription, department, name, treasurer } = req.body;
@@ -183,7 +190,7 @@ router.post('/scan-bill', upload.single('bill'), async (req, res) => {
   const mimeType = req.file.mimetype || 'image/jpeg';
 
   const clientApiKey = req.headers['x-gemini-key'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
-  const effectiveApiKey = clientApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const effectiveApiKey = (clientApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const hasApiKey = Boolean(effectiveApiKey);
 
   const isSvg = req.file.filename.endsWith('.svg') || mimeType.includes('svg');

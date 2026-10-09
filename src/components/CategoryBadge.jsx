@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 
 export const STANDARD_CATEGORIES = [
+  { name: 'Ăn uống (Chè, trà sữa, cafe...)', color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100', icon: UtensilsCrossed },
+  { name: 'Đóng quỹ & Thưởng dự án', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100', icon: Landmark },
+  { name: 'Chi tiêu khác', color: 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200', icon: Tag },
   { name: 'Ăn uống', color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100', icon: UtensilsCrossed },
   { name: 'Thưởng dự án', color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100', icon: Trophy },
   { name: 'Đóng quỹ', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100', icon: Landmark },

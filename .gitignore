@@ -11,6 +11,33 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
+*.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.id_rsa
+*.id_dsa
+credentials*.json
+service-account*.json
+client_secret*.json
+secrets/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sql
+*.dump
+
+# Logs & temp
+*.log
+scratch/
+temp/
 
 # OS files
 .DS_Store

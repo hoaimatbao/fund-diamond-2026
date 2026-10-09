@@ -179,60 +179,55 @@ export function extractAmountFromMatch(str) {
  * Scan image with Gemini Vision API
  */
 export async function scanBillWithGemini(filePath, mimeType = 'image/jpeg', customApiKey = null) {
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const rawKey = customApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const apiKey = (rawKey || '').replace(/^["']|["']$/g, '').trim();
   if (!apiKey) {
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env');
   }
 
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest'];
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const models = ['gemini-1.5-flash', 'gemini-flash-latest', 'gemini-3.8-flash'];
 
   const fileData = fs.readFileSync(filePath);
   const base64Data = fileData.toString('base64');
   const todayFormatted = new Date().toLocaleDateString('vi-VN');
 
-  const prompt = `
-Bạn là trợ lý AI chuyên bóc tách thông tin hóa đơn, biên lai ngân hàng và đơn đặt hàng tại Việt Nam (ShopeeFood, GrabFood, Baemin, chuyển khoản ngân hàng, nhà hàng).
+  const prompt = `Bạn là trợ lý AI chuyên gia phân tích và bóc tách dữ liệu biên lai, hóa đơn tại Việt Nam. Hãy đọc ảnh được cung cấp và nhận diện theo đúng 2 loại hóa đơn thực tế sau:
 
-HÃY ĐỌC KỸ HÌNH ẢNH VÀ TRÍCH XUẤT THEO CÁC QUY TẮC NGHIÊM NGẶT:
-1. SỐ TIỀN (amount):
-   - Với ảnh tóm tắt đơn hàng (ShopeeFood / GrabFood...): Luôn lấy đúng dòng "Tổng cộng" ở dưới cùng (ví dụ: "87.040đ" hoặc "87.040" -> 87040).
-   - Với biên lai chuyển khoản ngân hàng: Lấy số tiền lớn nhất, nổi bật nhất nằm cạnh hoặc dưới chữ "Thành công" và trước chữ "đ" (ví dụ: 430000). TUYỆT ĐỐI không lấy số tài khoản hay ngày tháng.
-   - Với hóa đơn giấy: Lấy tổng thanh toán cuối cùng.
-   - Trả về dạng số nguyên (integer, ví dụ: 87040).
+1. QUY TẮC NHẬN DIỆN BILL CHUYỂN KHOẢN NGÂN HÀNG (BANKING):
+(Áp dụng cho: Vietcombank, Techcombank, MB Bank, BIDV, VPBank, TPBank, ACB, Agribank, MoMo, ZaloPay, ViettelMoney, v.v.)
+- Số tiền (amount): Lấy số tiền giao dịch chính hiển thị to nhất / nổi bật nhất trên biên lai. Loại bỏ chữ 'đ', 'VND', dấu chấm, dấu phẩy, khoảng trắng, chỉ lấy số nguyên dương. Ví dụ: '12 000 000 đ' -> 12000000, '500.000 VND' -> 500000. TUYỆT ĐỐI KHÔNG lấy số tài khoản, mã tham chiếu giao dịch hay số dư còn lại.
+- Ngày giao dịch (date): Lấy trường 'Thời gian' / 'Ngày giao dịch' theo định dạng DD/MM/YYYY. Nếu không có năm, ghép năm 2026. Nếu không rõ ngày, dùng "${todayFormatted}".
+- Phân loại (type): Mặc định là "thu" nếu là tiền chuyển vào quỹ / đóng quỹ / nộp tiền. Nếu chuyển chi trả ra ngoài thì để "chi".
+- Người thực hiện (member): Quét trong 'Nội dung' hoặc 'Thông tin người gửi/nhận', map chính xác với danh sách 6 thành viên quỹ: ["Hoài", "Thanh", "Hằng", "Tuyển", "Phương", "Hà"].
+  + Nếu có 'HOANG THI HOAI', 'HUYEN HOAI', 'HOAI HT', 'HOAI' -> "Hoài"
+  + Nếu có 'TRAN THI THANH', 'THANH' -> "Thanh"
+  + Nếu có 'NGUYEN THI HANG', 'HANG' -> "Hằng"
+  + Nếu có 'NGUYEN THI HONG TUYEN', 'HONG TUYEN', 'TUYEN' -> "Tuyển"
+  + Nếu có 'DANG LAN PHUONG', 'LAN PHUONG', 'PHUONG' -> "Phương"
+  + Nếu có 'PHAM THI HA', 'THI HA', 'HA' -> "Hà"
+  + Nếu không tìm thấy tên ai trong 6 thành viên trên, BẮT BUỘC để: "Thủ quỹ".
+- Danh mục (category): Chọn "Đóng quỹ & Thưởng dự án" nếu là thu vào quỹ; hoặc "Chi tiêu khác" nếu là chi.
+- Nội dung (note): Lấy NGUYÊN VĂN phần 'Nội dung' chuyển khoản.
 
-2. TÊN QUÁN / NỘI DUNG (description):
-   - Với ảnh tóm tắt đơn nhóm (ShopeeFood / GrabFood): Lấy dòng đầu tiên có biểu tượng địa điểm xanh hoặc tên quán (ví dụ: "Chè Phan Cải - Chè Ngon, Kem Bơ Xôi...").
-   - Với biên lai ngân hàng: Lấy dòng "Nội dung" chuyển khoản.
-   - Với hóa đơn giấy: Lấy tên quán ăn hoặc món ăn chính.
+2. QUY TẮC NHẬN DIỆN BILL ĐẶT ĐỒ ĂN / MUA HÀNG (GRABFOOD, SHOPEEFOOD,...):
+- Số tiền (amount): BẮT BUỘC lấy giá trị tại dòng 'Tổng cộng' cuối cùng (đã trừ mã giảm giá), TUYỆT ĐỐI KHÔNG lấy 'Tổng tạm tính'. (Ví dụ: Tổng cộng 87.040đ -> lấy 87040).
+- Phân loại (type): Chọn "chi".
+- Danh mục (category): Tự động chọn mục "Ăn uống (Chè, trà sữa, cafe...)".
+- Nội dung (note): Ghi tên quán + danh sách món (Ví dụ: 'Chè Phan Cải - Kem bơ, chè dừa dầm...').
+- Người thực hiện (member): Quét tên người đặt đơn / người nhận trên bill, map với ["Hoài", "Thanh", "Hằng", "Tuyển", "Phương", "Hà"], nếu không có để "Thủ quỹ".
+- Ngày giao dịch (date): Lấy ngày in hóa đơn / ngày đặt theo định dạng DD/MM/YYYY. Nếu không rõ, dùng "${todayFormatted}".
 
-3. LOẠI GIAO DỊCH (type):
-   - Nếu là mua đồ ăn, chè, trà sữa, chi tiêu, thanh toán tiền -> "expense".
-   - Nếu là nộp tiền quỹ, đóng quỹ, thưởng vào quỹ -> "income".
-
-4. NGÀY GIAO DỊCH (date):
-   - Ngày ghi trên biên lai/đơn hàng định dạng DD/MM/YYYY. Nếu không có, dùng ngày hôm nay: "${todayFormatted}".
-
-5. DANH MỤC (category):
-   - Đơn ăn uống, trà sữa, chè, cafe -> "Ăn uống (Chè, trà sữa, cafe...)".
-   - Tiệc, lẩu, buffet, nướng -> "Liên hoan (Lẩu, Buffet, BBQ...)".
-   - Đóng quỹ định kỳ -> "Đóng quỹ".
-   - Khen thưởng -> "Khen thưởng".
-   - Khác -> "Khác".
-
-6. THÀNH VIÊN (member):
-   - Ưu tiên tìm xem người đặt đơn, người tham gia hoặc người chuyển khoản/thụ hưởng có trùng hoặc chứa tên các thành viên nhóm: [Huyền Hoài, Hoài, Thanh, Hằng, Tuyển, Phương, Hà].
-   - Ví dụ: Người đặt "Huyền Hoài" hoặc "Hoài" -> "Huyền Hoài". Nếu không có ai trong danh sách thì để "Thủ quỹ".
-
-CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍCH DÔNG DÀI THEO CẤU TRÚC:
+3. YÊU CẦU PHẢN HỒI TỪ AI (BẮT BUỘC):
+Gemini chỉ trả về duy nhất chuỗi JSON có cấu trúc sau (không kèm markdown rào trước đón sau):
 {
+  "type": "thu" | "chi",
   "amount": 87040,
-  "type": "expense",
-  "date": "${todayFormatted}",
-  "category": "Ăn uống (Chè, trà sữa, cafe...)",
-  "description": "Chè Phan Cải - Chè Ngon, Kem Bơ Xôi...",
-  "member": "Huyền Hoài"
-}
-`;
+  "member": "Hoài" | "Thanh" | "Hằng" | "Tuyển" | "Phương" | "Hà" | "Thủ quỹ",
+  "date": "09/10/2026",
+  "category": "Ăn uống (Chè, trà sữa, cafe...)" | "Đóng quỹ & Thưởng dự án" | "Chi tiêu khác",
+  "note": "Nội dung giao dịch..."
+}`;
 
   let lastErr = null;
   for (const modelName of models) {
@@ -241,7 +236,7 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
         model: modelName,
         generationConfig: {
           responseMimeType: 'application/json',
-          temperature: 0.2
+          temperature: 0.1
         }
       });
       const result = await model.generateContent([
@@ -268,14 +263,33 @@ CHỈ TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THÔ GỌN GÀNG, KHÔNG GIẢI THÍC
         parsedAmount = Math.round(Number(parsedAmount)) || 0;
       }
 
+      const rawType = String(parsed.type || '').trim().toLowerCase();
+      const normalizedType = (rawType === 'thu' || rawType === 'income') ? 'thu' : 'chi';
+
+      let normalizedMember = String(parsed.member || '').trim();
+      const validMembers = ['Hoài', 'Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
+      const matchedMem = validMembers.find(m => m.toLowerCase() === normalizedMember.toLowerCase());
+      if (matchedMem) {
+        normalizedMember = matchedMem;
+      } else if (!normalizedMember || normalizedMember.toLowerCase() === 'thủ quỹ' || normalizedMember.toLowerCase() === 'thu quy') {
+        normalizedMember = 'Thủ quỹ';
+      }
+
+      let normalizedCategory = String(parsed.category || '').trim();
+      if (!normalizedCategory) {
+        normalizedCategory = normalizedType === 'thu' ? 'Đóng quỹ & Thưởng dự án' : 'Ăn uống (Chè, trà sữa, cafe...)';
+      }
+
+      const finalNote = String(parsed.note || parsed.description || '').trim() || 'Giao dịch theo hóa đơn';
+
       return {
+        type: normalizedType,
         amount: parsedAmount || 0,
-        description: parsed.description || 'Giao dịch theo biên lai',
-        type: (parsed.type === 'income' || parsed.type === 'THU') ? 'THU' : 'CHI',
+        member: normalizedMember,
         date: parsed.date || todayFormatted,
-        category: parsed.category || 'Ăn uống',
-        member: parsed.member || '',
-        note: (parsed.member && parsed.member !== 'Thủ quỹ') ? `Thành viên: ${parsed.member}` : 'AI Gemini Vision trích xuất',
+        category: normalizedCategory,
+        note: finalNote,
+        description: finalNote,
         confidence: '99%'
       };
     } catch (err) {

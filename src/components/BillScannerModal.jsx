@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   X, 
   ScanLine, 
-  Camera, 
+  UploadCloud, 
   Upload, 
   Sparkles, 
   CheckCircle2, 
@@ -16,12 +16,21 @@ import {
   Zap,
   AlertCircle,
   Check,
-  ImageIcon
+  ImageIcon,
+  RotateCcw,
+  Key
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
-import { scanBillImage } from '../utils/ocrScanner';
+import { scanBillImage, getGeminiApiKey, saveGeminiApiKey } from '../utils/ocrScanner';
 
 const FUND_MEMBERS = ['Hoài', 'Thanh', 'Hằng', 'Tuyển', 'Phương', 'Hà'];
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 /**
  * Tự động nhận diện tên thành viên từ nội dung biên lai hoặc tên người gửi/nhận
@@ -34,12 +43,12 @@ function detectMemberFromText(text) {
     .toLowerCase();
 
   const memberKeywords = [
-    { name: 'Hoài', patterns: ['huyen hoai', 'huyenhoai', 'hoai ht', 'hoaiht', 'hoai'] },
+    { name: 'Hoài', patterns: ['hoang thi hoai', 'hoangthihoai', 'huyen hoai', 'huyenhoai', 'hoai ht', 'hoaiht', 'hoai'] },
     { name: 'Thanh', patterns: ['tran thi thanh', 'tranthithanh', 'thanh'] },
     { name: 'Hằng', patterns: ['nguyen thi hang', 'nguyenthihang', 'hang'] },
-    { name: 'Tuyển', patterns: ['nguyen thi hong tuyen', 'nguyenthihongtuyen', 'tuyen'] },
-    { name: 'Phương', patterns: ['dang lan phuong', 'danglanphuong', 'phuong'] },
-    { name: 'Hà', patterns: ['pham thi ha', 'phamthiha', 'ha'] }
+    { name: 'Tuyển', patterns: ['nguyen thi hong tuyen', 'nguyenthihongtuyen', 'hong tuyen', 'hongtuyen', 'tuyen'] },
+    { name: 'Phương', patterns: ['dang lan phuong', 'danglanphuong', 'lan phuong', 'lanphuong', 'phuong'] },
+    { name: 'Hà', patterns: ['pham thi ha', 'phamthiha', 'thi ha', 'thiha', 'ha'] }
   ];
 
   for (const m of memberKeywords) {
@@ -58,6 +67,13 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
   const [previewUrl, setPreviewUrl] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanStatusText, setScanStatusText] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Gemini API Key quick config state
+  const [showKeyConfig, setShowKeyConfig] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(() => getGeminiApiKey() || '');
+  const [keyNotice, setKeyNotice] = useState('');
 
   // Editable form state after scan
   const [formData, setFormData] = useState({
@@ -65,18 +81,29 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     description: '',
     type: 'CHI',
     date: new Date().toLocaleDateString('vi-VN'),
-    category: 'Ăn uống',
+    category: 'Ăn uống (Chè, trà sữa, cafe...)',
     submittedBy: 'Thủ quỹ',
     note: '',
     billImage: '',
     confidence: '99%',
-    source: 'Gemini 3.8 Flash'
+    source: 'Gemini 1.5 Flash',
+    compressionStats: null
   });
 
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
+
+  const handleSaveApiKey = (keyToSave) => {
+    saveGeminiApiKey(keyToSave);
+    setKeyNotice('Đã lưu API Key thành công!');
+    setTimeout(() => setKeyNotice(''), 3000);
+    setError('');
+    if (file && previewUrl) {
+      performScan(file, previewUrl);
+    }
+  };
 
   const handleToggleMember = (member) => {
     setFormData(prev => ({
@@ -85,75 +112,109 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     }));
   };
 
-  const handleFileChange = async (e) => {
+  const handleProcessFile = async (selectedFile) => {
+    if (!selectedFile) return;
+    if (!selectedFile.type || !selectedFile.type.startsWith('image/')) {
+      setError('Vui lòng chỉ tải lên file ảnh hợp lệ (PNG, JPG, JPEG, WEBP).');
+      return;
+    }
+    setFile(selectedFile);
+    const url = URL.createObjectURL(selectedFile);
+    setPreviewUrl(url);
+    setHasScanned(false);
+    setError('');
+    await performScan(selectedFile, url);
+  };
+
+  const handleFileInputChange = async (e) => {
     const selected = e.target?.files?.[0];
     if (selected) {
-      setFile(selected);
-      const url = URL.createObjectURL(selected);
-      setPreviewUrl(url);
-      setHasScanned(false);
-      setError('');
-      // Auto start scan on file select
-      await performScan(selected, url);
+      await handleProcessFile(selected);
     }
-    // Reset file input to allow selecting the same image again
     if (e.target) {
       e.target.value = '';
     }
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const droppedFiles = e.dataTransfer?.files;
+    if (droppedFiles && droppedFiles.length > 0) {
+      await handleProcessFile(droppedFiles[0]);
+    }
+  };
+
   const performScan = async (fileObj, url) => {
     if (!fileObj) {
-      setError('Vui lòng chọn hoặc chụp ảnh hóa đơn hợp lệ.');
+      setError('Vui lòng chọn file ảnh hóa đơn hợp lệ.');
       return;
     }
     setScanning(true);
-    setScanStatusText('Đang gửi ảnh sang Gemini 3.8 Flash bóc tách thông tin...');
+    setScanStatusText('Đang nén ảnh bằng HTML5 Canvas và gửi sang Gemini 1.5 Flash...');
     setError('');
 
     try {
       const result = await scanBillImage(fileObj, (msg) => setScanStatusText(msg));
       
-      // Tự động nhận diện thành viên từ kết quả quét AI (member, người đặt đơn, người nhận, nội dung)
-      const textToSearch = `${result.member || ''} ${result.payerOrReceiver || ''} ${result.description || ''} ${result.note || ''}`;
-      const detectedMember = detectMemberFromText(textToSearch);
-      const chosenMember = detectedMember || (result.member && result.member !== 'Thủ quỹ' ? result.member : 'Thủ quỹ');
+      // 1. Phân loại loại giao dịch: 'thu' -> 'THU', 'chi' -> 'CHI'
+      const isThu = String(result.type || '').trim().toLowerCase() === 'thu';
+      const resolvedType = isThu ? 'THU' : 'CHI';
 
-      // Chuẩn hóa category
-      let matchedCategory = 'Ăn uống';
-      const catLower = (result.category || '').toLowerCase();
-      if (catLower.includes('đóng quỹ') || result.type === 'THU' || result.type === 'income') {
-        matchedCategory = 'Đóng quỹ';
-      } else if (catLower.includes('liên hoan') || catLower.includes('lẩu') || catLower.includes('buffet') || catLower.includes('bbq')) {
-        matchedCategory = 'Liên hoan';
-      } else if (catLower.includes('thưởng dự án')) {
-        matchedCategory = 'Thưởng dự án';
-      } else if (catLower.includes('khen thưởng')) {
-        matchedCategory = 'Khen thưởng';
-      } else if (catLower.includes('quỹ ban đầu')) {
-        matchedCategory = 'Quỹ ban đầu';
-      } else if (catLower.includes('sinh nhật')) {
-        matchedCategory = 'Sinh nhật';
-      } else if (catLower.includes('teambuilding')) {
-        matchedCategory = 'Teambuilding';
-      } else if (catLower.includes('ăn uống') || catLower.includes('chè') || catLower.includes('trà sữa') || catLower.includes('cafe')) {
-        matchedCategory = 'Ăn uống';
-      } else if (result.category) {
-        matchedCategory = result.category;
+      // 2. Người thực hiện: map chính xác với danh sách 6 thành viên quỹ [Hoài, Thanh, Hằng, Tuyển, Phương, Hà]
+      let chosenMember = 'Thủ quỹ';
+      if (result.member && FUND_MEMBERS.includes(result.member)) {
+        chosenMember = result.member;
+      } else if (result.member && result.member !== 'Thủ quỹ') {
+        const detected = detectMemberFromText(`${result.member} ${result.note || ''}`);
+        chosenMember = detected || 'Thủ quỹ';
+      } else {
+        const detected = detectMemberFromText(result.note || '');
+        chosenMember = detected || 'Thủ quỹ';
       }
 
+      // 3. Danh mục
+      let matchedCategory = result.category;
+      if (!matchedCategory) {
+        matchedCategory = isThu ? 'Đóng quỹ & Thưởng dự án' : 'Ăn uống (Chè, trà sữa, cafe...)';
+      }
+
+      // 4. Nội dung / Ghi chú (Lấy nguyên văn phần note từ AI)
+      const transactionNote = result.note || result.description || 'Giao dịch theo biên lai';
+
+      // Tự động điền dữ liệu JSON vào các ô input trên modal form
       setFormData({
         amount: result.amount !== undefined ? result.amount : '',
-        description: result.description || 'Giao dịch theo biên lai',
-        type: (result.type === 'income' || result.type === 'THU') ? 'THU' : 'CHI',
+        description: transactionNote,
+        type: resolvedType,
         date: result.date || new Date().toLocaleDateString('vi-VN'),
         category: matchedCategory,
         submittedBy: chosenMember,
-        note: result.note || (result.member ? `Thành viên: ${result.member}` : (result.payerOrReceiver ? `Người nhận: ${result.payerOrReceiver}` : '')),
+        note: transactionNote,
         billImage: result.billImage || url,
         compressedBlob: result.compressedBlob || null,
         confidence: result.confidence || '99%',
-        source: result.source || 'Gemini 3.8 Flash'
+        source: result.source || 'Gemini 1.5 Flash',
+        compressionStats: result.compressionStats || null
       });
       setHasScanned(true);
     } catch (err) {
@@ -230,6 +291,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
     setPreviewUrl('');
     setHasScanned(false);
     setScanning(false);
+    setIsDragging(false);
     setError('');
     setFormData({
       amount: '',
@@ -241,7 +303,8 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
       note: '',
       billImage: '',
       confidence: '99%',
-      source: 'Gemini 3.8 Flash'
+      source: 'Gemini 1.5 Flash',
+      compressionStats: null
     });
     onClose();
   };
@@ -264,108 +327,211 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   AI Quét Bill & Hóa Đơn Thông Minh
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/20 text-white border border-white/30 uppercase tracking-wider">
-                  Gemini 3.8 Flash
+                  Gemini 1.5 Flash
                 </span>
               </div>
               <p className="text-xs text-white/80">
-                Tự động bóc tách số tiền, ngày giờ, nội dung giao dịch ngân hàng & hóa đơn ăn uống
+                Tự động nén Canvas 1200px - 1400px & bóc tách JSON mode: Số tiền, Ngày tháng, Nội dung, Thu - Chi
               </p>
             </div>
           </div>
-          <button 
-            onClick={handleClose} 
-            className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-xl transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={() => setShowKeyConfig(!showKeyConfig)} 
+              className={`text-xs px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition ${
+                showKeyConfig 
+                  ? 'bg-white text-emerald-800 border-white shadow-xs font-bold' 
+                  : 'bg-white/15 hover:bg-white/25 text-white border-white/20'
+              }`}
+              title="Cấu hình Google Gemini API Key"
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Cấu hình Key</span>
+            </button>
+            <button 
+              onClick={handleClose} 
+              className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-xl transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
           
-          {/* UPLOAD / CAMERA ZONE */}
-          {!previewUrl ? (
-            <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 sm:p-8 text-center bg-slate-50/60 hover:bg-emerald-50/20 transition group">
-              <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs border border-slate-200 group-hover:scale-105 transition-transform text-emerald-600">
-                <Camera className="w-7 h-7" />
+          {/* Key Configuration Collapsible Panel */}
+          {showKeyConfig && (
+            <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-2.5 border border-slate-800 shadow-md animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
+                  <Key className="w-3.5 h-3.5" /> Cấu hình Google Gemini API Key:
+                </span>
+                <span className="text-[10px] text-slate-400">Lưu trực tiếp trên LocalStorage</span>
               </div>
-              <h4 className="text-base font-bold text-slate-800 mb-1">
-                Chụp ảnh hoặc tải lên ảnh biên lai / hóa đơn
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="Nhập Google Gemini API Key (AIzaSy...)"
+                  className="flex-1 px-3 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded-lg text-white font-mono focus:ring-1 focus:ring-emerald-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSaveApiKey(apiKeyInput.trim())}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition"
+                >
+                  Lưu Key
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setApiKeyInput('');
+                    handleSaveApiKey('');
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition border border-slate-700"
+                  title="Dùng key mặc định từ file .env"
+                >
+                  Mặc định
+                </button>
+              </div>
+              {keyNotice && (
+                <p className="text-[11px] text-emerald-400 font-medium">{keyNotice}</p>
+              )}
+            </div>
+          )}
+
+          {/* Top Error Alert if !previewUrl */}
+          {!previewUrl && error && (
+            <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-xl text-xs space-y-2 animate-in fade-in">
+              <div className="flex items-start gap-2.5 text-rose-900">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <strong className="block font-bold text-rose-900 text-sm">
+                    Thông báo lỗi:
+                  </strong>
+                  <p className="font-mono text-[11px] text-rose-700 bg-white/90 p-2.5 rounded-lg border border-rose-200 mt-1 break-words leading-relaxed select-all">
+                    {error}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* UPLOAD ZONE (DRAG & DROP + FILE PICKER - NO CAMERA) */}
+          {!previewUrl ? (
+            <div 
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-7 sm:p-10 text-center transition-all duration-200 cursor-pointer group ${
+                isDragging 
+                  ? 'border-emerald-500 bg-emerald-50/70 scale-[1.01] shadow-lg shadow-emerald-500/10' 
+                  : 'border-slate-300 hover:border-emerald-500 bg-slate-50/60 hover:bg-emerald-50/25'
+              }`}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3.5 transition-transform shadow-xs border ${
+                isDragging
+                  ? 'bg-emerald-600 text-white scale-110 border-emerald-600'
+                  : 'bg-white text-emerald-600 border-slate-200 group-hover:scale-105'
+              }`}>
+                <UploadCloud className="w-8 h-8" />
+              </div>
+
+              <h4 className="text-base sm:text-lg font-bold text-slate-800 mb-1.5">
+                {isDragging ? 'Thả file ảnh vào đây để quét ngay' : 'Tải lên ảnh hóa đơn / biên lai thanh toán'}
               </h4>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
-                Hệ thống tự động sử dụng AI Gemini 3.8 Flash để nhận diện biên lai chuyển khoản ngân hàng, hóa đơn ăn uống, bóc tách chính xác số tiền và nội dung.
+              <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mb-5 leading-relaxed">
+                Kéo & thả file ảnh vào đây hoặc bấm để chọn tệp từ thiết bị.
+                <br />
+                <span className="text-[11px] text-slate-400">
+                  Hỗ trợ PNG, JPG, JPEG. Tự động nén Canvas (1200px - 1400px, 80%) giảm còn ~150KB - 300KB siêu nét.
+                </span>
               </p>
 
-              {/* 2 nút tải ảnh riêng biệt: Chụp ảnh bill & Chọn ảnh từ thư viện */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md mx-auto">
-                {/* Nút 1: Chụp ảnh bill (mở Camera trực tiếp) */}
-                <label className="w-full sm:w-1/2 inline-flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl cursor-pointer shadow-md shadow-emerald-600/25 transition-all hover:scale-102 active:scale-98">
-                  <Camera className="w-4 h-4 shrink-0" />
-                  <span>📸 Chụp ảnh bill</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
-
-                {/* Nút 2: Chọn ảnh từ thư viện (iOS & Android mở Photo Library / menu chuẩn) */}
-                <label className="w-full sm:w-1/2 inline-flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 hover:text-emerald-700 border border-slate-300 hover:border-emerald-400 text-xs sm:text-sm font-bold rounded-xl cursor-pointer shadow-xs transition-all hover:scale-102 active:scale-98">
-                  <ImageIcon className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>🖼️ Chọn ảnh từ thư viện</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
+              <div className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-md shadow-emerald-600/25 transition-all group-hover:scale-102">
+                <Upload className="w-4 h-4" />
+                <span>Bấm chọn tệp ảnh</span>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
               
-              {/* IMAGE PREVIEW & SCAN STATUS */}
-              <div className="relative border border-slate-200 rounded-xl overflow-hidden bg-slate-900/5 max-h-44 flex items-center justify-center p-2 group">
-                <img
-                  src={previewUrl}
-                  alt="Bill Preview"
-                  className="max-h-40 w-auto object-contain rounded shadow-xs"
-                />
+              {/* IMAGE PREVIEW & COMPRESSION STATS */}
+              <div className="relative border border-slate-200 rounded-2xl overflow-hidden bg-slate-900/5 p-3 flex flex-col sm:flex-row items-center gap-4">
+                <div className="relative shrink-0 flex items-center justify-center bg-white rounded-xl border border-slate-200 p-1 shadow-xs max-h-44 max-w-xs overflow-hidden">
+                  <img
+                    src={previewUrl}
+                    alt="Bill Preview"
+                    className="max-h-40 w-auto object-contain rounded-lg"
+                  />
+                </div>
 
-                {/* Đổi ảnh: Chụp lại hoặc Chọn ảnh khác từ thư viện */}
-                <div className="absolute top-2 right-2 flex items-center gap-1.5">
-                  <label className="px-2.5 py-1 bg-white/90 hover:bg-white text-slate-700 rounded-lg text-xs font-semibold shadow-md cursor-pointer border border-slate-200 flex items-center gap-1 transition">
-                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="hidden sm:inline">Chụp lại</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
-                  <label className="px-2.5 py-1 bg-white/90 hover:bg-white text-slate-700 rounded-lg text-xs font-semibold shadow-md cursor-pointer border border-slate-200 flex items-center gap-1 transition">
-                    <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Đổi ảnh khác</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
+                <div className="flex-1 min-w-0 space-y-2 text-left w-full">
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">
+                      {file?.name || 'Hóa đơn / Biên lai đã tải'}
+                    </p>
+                    {formData.compressionStats && (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          ⚡ Đã nén Canvas: {formatFileSize(formData.compressionStats.compressedSize)} (-{formData.compressionStats.compressionRatio}%)
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          Gốc: {formatFileSize(formData.compressionStats.originalSize)} • Kích thước: {formData.compressionStats.width}×{formData.compressionStats.height}px
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold border border-slate-300 shadow-2xs transition"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Đổi ảnh khác</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={scanning}
+                      onClick={() => performScan(file, previewUrl)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-300 transition disabled:opacity-50"
+                    >
+                      <RotateCcw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
+                      <span>Quét lại AI</span>
+                    </button>
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                  />
                 </div>
 
                 {/* Scanning Overlay */}
                 {scanning && (
-                  <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-2xs flex flex-col items-center justify-center text-white p-4 text-center">
-                    <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mb-2" />
-                    <span className="text-sm font-bold">{scanStatusText || 'Gemini 3.8 Flash AI đang phân tích ảnh...'}</span>
-                    <span className="text-xs text-emerald-300 mt-1">Đang bóc tách số tiền chuyển khoản, ngày và người nhận</span>
+                  <div className="absolute inset-0 bg-slate-900/85 backdrop-blur-2xs flex flex-col items-center justify-center text-white p-4 text-center z-10">
+                    <RefreshCw className="w-9 h-9 text-emerald-400 animate-spin mb-2" />
+                    <span className="text-sm font-bold">{scanStatusText || 'Gemini 1.5 Flash đang bóc tách...'}</span>
+                    <span className="text-xs text-emerald-300 mt-1">Đang trích xuất số tiền, ngày giao dịch và nội dung theo JSON mode</span>
                   </div>
                 )}
               </div>
@@ -376,7 +542,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="text-emerald-900 font-medium">
-                      Đã bóc tách thành công qua <strong>{formData.source}</strong> (Độ khớp: {formData.confidence})
+                      Đã bóc tách thành công qua <strong>{formData.source} (JSON Mode)</strong> (Độ khớp: {formData.confidence})
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-500 italic hidden sm:inline">
@@ -396,7 +562,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, type: 'THU', category: 'Đóng quỹ' }))}
+                      onClick={() => setFormData(prev => ({ ...prev, type: 'THU', category: 'Đóng quỹ & Thưởng dự án' }))}
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-xs sm:text-sm transition ${
                         formData.type === 'THU'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20 scale-101'
@@ -409,7 +575,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
 
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, type: 'CHI', category: 'Ăn uống' }))}
+                      onClick={() => setFormData(prev => ({ ...prev, type: 'CHI', category: 'Ăn uống (Chè, trà sữa, cafe...)' }))}
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-xs sm:text-sm transition ${
                         formData.type === 'CHI'
                           ? 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/20 scale-101'
@@ -508,7 +674,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                     />
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    💡 Gemini AI Vision nhận diện chính xác số tiền lớn sau chữ "Thành công" hoặc trước ký hiệu "đ".
+                    💡 Gemini 1.5 Flash nhận diện chính xác số tiền thanh toán thực tế, bóc tách JSON mode siêu nhanh.
                   </p>
                 </div>
 
@@ -551,8 +717,11 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                       onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
                       className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden bg-white shadow-2xs font-medium text-slate-800"
                     >
+                      <option value="Ăn uống (Chè, trà sữa, cafe...)">Ăn uống (Chè, trà sữa, cafe...)</option>
+                      <option value="Đóng quỹ & Thưởng dự án">Đóng quỹ & Thưởng dự án</option>
+                      <option value="Chi tiêu khác">Chi tiêu khác</option>
                       <option value="Đóng quỹ">Đóng quỹ định kỳ</option>
-                      <option value="Ăn uống">Ăn uống (Chè, trà sữa, cafe...)</option>
+                      <option value="Ăn uống">Ăn uống</option>
                       <option value="Liên hoan">Liên hoan (Lẩu, Buffet, BBQ...)</option>
                       <option value="Thưởng dự án">Thưởng dự án / BGĐ</option>
                       <option value="Khen thưởng">Khen thưởng thành viên</option>
@@ -580,7 +749,7 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
 
                 {/* Thông báo lỗi nếu có */}
                 {error && (
-                  <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-xl text-xs space-y-2 animate-in fade-in">
+                  <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-xl text-xs space-y-2.5 animate-in fade-in">
                     <div className="flex items-start gap-2.5 text-rose-900">
                       <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
@@ -592,9 +761,35 @@ export default function BillScannerModal({ isOpen, onClose, onSaveScan }) {
                         </p>
                       </div>
                     </div>
+
+                    {/* Quick API Key Input if key error */}
+                    {(error.toLowerCase().includes('key') || error.toLowerCase().includes('quota') || error.toLowerCase().includes('kết nối')) && (
+                      <div className="pt-2 pb-1 border-t border-rose-200/80">
+                        <label className="block text-[11px] font-bold text-rose-900 mb-1">
+                          🔑 Cập nhật Gemini API Key nhanh:
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="password"
+                            value={apiKeyInput}
+                            onChange={(e) => setApiKeyInput(e.target.value)}
+                            placeholder="Dán Gemini API Key mới vào đây..."
+                            className="flex-1 px-2.5 py-1 text-xs border border-rose-300 rounded-lg bg-white text-slate-800 font-mono outline-none focus:ring-1 focus:ring-rose-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveApiKey(apiKeyInput.trim())}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs whitespace-nowrap"
+                          >
+                            Lưu & Quét Lại
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1 border-t border-rose-200/70">
                       <span className="text-[11px] text-rose-700 font-medium">
-                        💡 Nếu gặp lỗi API Key, vui lòng liên hệ Thủ quỹ cập nhật key vào hệ thống.
+                        💡 Bạn có thể kiểm tra API Key hoặc tự điền số tiền ở các ô trên.
                       </span>
                       {file && (
                         <button
